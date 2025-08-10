@@ -210,7 +210,7 @@ class GraphParser {
             return;
         }
 
-        // Create all nodes first, then assign the name to the last one
+        // Create all nodes first, then assign the name to the first one (source instrument)
         const nodeNames = [];
         
         // Process each part in the chain
@@ -219,8 +219,8 @@ class GraphParser {
             const node = this.parseNodeExpression(part);
             
             if (node) {
-                // Create node with temporary name (will rename last one to the chain name)
-                const nodeName = (i === parts.length - 1) ? name : this.generateAnonymousName();
+                // Assign the chain name to the first node (source), others get anonymous names
+                const nodeName = (i === 0) ? name : this.generateAnonymousName();
                 node.name = nodeName;
                 this.nodes.set(nodeName, node);
                 nodeNames.push(nodeName);
