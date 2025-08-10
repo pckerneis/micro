@@ -4,7 +4,7 @@ class AudioEngine {
         this.masterGain = null;
         this.instruments = new Map();
         this.patterns = new Map();
-        this.effects = new Map(); // Named effects storage
+        this.namedEffects = new Map(); // Named effects storage (renamed for consistency)
         this.effectFactory = null; // Will be initialized with audioContext
         this.isPlaying = false;
         this.startTime = 0;
@@ -45,7 +45,7 @@ class AudioEngine {
 
     createNamedEffect(name, effectType, params) {
         const effect = new EffectModule(this.audioContext, effectType, params);
-        this.effects.set(name, effect);
+        this.namedEffects.set(name, effect);
         return effect;
     }
 
@@ -557,4 +557,139 @@ class OscillatorInstrument {
         const clampedNote = Math.max(0, Math.min(127, note));
         return 440 * Math.pow(2, (clampedNote - 69) / 12);
     }
+
+    // === GRAPH INTEGRATION METHODS ===
+    // These methods support the decoupled GraphParser integration
+
+    /**
+     * Clear all instruments, patterns, and named effects
+     */
+    clearAll() {
+        this.instruments.clear();
+        this.patterns.clear();
+        this.namedEffects.clear();
+        this.stop(); // Stop any current playback
+    }
+
+    /**
+     * Add an instrument with the given type and parameters
+     */
+    addInstrument(name, type, parameters) {
+        if (type === 'sample') {
+            this.instruments.set(name, new SampleInstrument(
+                this.audioContext, 
+                this.masterGain,
+                parameters.url, 
+                parameters,
+                this // Pass audioEngine reference for named effects
+            ));
+        } else {
+            // Oscillator instruments
+            this.instruments.set(name, new OscillatorInstrument(
+                this.audioContext,
+                this.masterGain,
+                type,
+                parameters,
+                this // Pass audioEngine reference for named effects
+            ));
+        }
+    }
+
+    /**
+     * Set an effect chain for an instrument
+     */
+    setInstrumentEffectChain(instrumentName, effectChain) {
+        const instrument = this.instruments.get(instrumentName);
+        if (instrument) {
+            instrument.effectChains = [effectChain]; // Wrap in array for multiple chains support
+        }
+    }
+
+    /**
+     * Apply a parsed graph to this audio engine
+     * This is the main integration point - decoupled architecture
+     */
+    applyParsedGraph(parsedGraph) {
+        // Import GraphAdapter dynamically to avoid circular dependencies
+        if (typeof GraphAdapter === 'undefined') {
+            console.error('GraphAdapter not available. Make sure graph-adapter.js is loaded.');
+            return {
+                success: false,
+                errors: ['GraphAdapter not available'],
+                nodesCreated: 0,
+                connectionsCreated: 0,
+                patternsCreated: 0
+            };
+        }
+
+        const adapter = new GraphAdapter(this);
+        adapter.setCurrentNodes(parsedGraph.nodes);
+        return adapter.applyGraph(parsedGraph);
+    }
 }
+
+// Manually add the graph integration methods to the prototype as a workaround
+AudioEngine.prototype.clearAll = function() {
+    // Defensive checks to prevent "Cannot read properties of undefined" errors
+    if (this.instruments && typeof this.instruments.clear === 'function') {
+        this.instruments.clear();
+    }
+    if (this.patterns && typeof this.patterns.clear === 'function') {
+        this.patterns.clear();
+    }
+    if (this.namedEffects && typeof this.namedEffects.clear === 'function') {
+        this.namedEffects.clear();
+    }
+    if (typeof this.stop === 'function') {
+        this.stop(); // Stop any current playback
+    }
+};
+
+AudioEngine.prototype.addInstrument = function(name, type, parameters) {
+    if (type === 'sample') {
+        this.instruments.set(name, new SampleInstrument(
+            this.audioContext, 
+            this.masterGain,
+            parameters.url, 
+            parameters,
+            this // Pass audioEngine reference for named effects
+        ));
+    } else {
+        // Oscillator instruments
+        this.instruments.set(name, new OscillatorInstrument(
+            this.audioContext,
+            this.masterGain,
+            type,
+            parameters,
+            this // Pass audioEngine reference for named effects
+        ));
+    }
+};
+
+AudioEngine.prototype.setInstrumentEffectChain = function(instrumentName, effectChain) {
+    const instrument = this.instruments.get(instrumentName);
+    if (instrument) {
+        instrument.effectChains = [effectChain]; // Wrap in array for multiple chains support
+    }
+};
+
+AudioEngine.prototype.applyParsedGraph = function(parsedGraph) {
+    // Import GraphAdapter dynamically to avoid circular dependencies
+    if (typeof GraphAdapter === 'undefined') {
+        console.error('GraphAdapter not available. Make sure graph-adapter.js is loaded.');
+        return {
+            success: false,
+            errors: ['GraphAdapter not available'],
+            nodesCreated: 0,
+            connectionsCreated: 0,
+            patternsCreated: 0
+        };
+    }
+
+    const adapter = new GraphAdapter(this);
+    adapter.setCurrentNodes(parsedGraph.nodes);
+    return adapter.applyGraph(parsedGraph);
+};
+
+// Debug: Verify the applyParsedGraph method is loaded
+console.log('AudioEngine.prototype.applyParsedGraph exists:', typeof AudioEngine.prototype.applyParsedGraph === 'function');
