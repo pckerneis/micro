@@ -30,8 +30,8 @@ class AudioEngine {
         }
     }
 
-    createSample(url) {
-        return new SampleInstrument(this.audioContext, this.masterGain, url);
+    createSample(url, options = {}) {
+        return new SampleInstrument(this.audioContext, this.masterGain, url, options);
     }
 
     createOscillator(type, options = {}) {
@@ -99,13 +99,14 @@ class AudioEngine {
 }
 
 class SampleInstrument {
-    constructor(audioContext, destination, url) {
+    constructor(audioContext, destination, url, options = {}) {
         this.audioContext = audioContext;
         this.destination = destination;
         this.url = url;
         this.buffer = null;
         this.effects = [];
         this.hasExplicitRouting = false;
+        this.gain = options.gain !== undefined ? options.gain : 1.0;
         this.loadSample();
     }
 
@@ -126,8 +127,8 @@ class SampleInstrument {
             
         } catch (error) {
             console.warn(`Could not load sample ${this.url}:`, error.message);
-            console.warn('Using synthetic drum sound as fallback');
-            this.buffer = this.createSyntheticDrum();
+            // console.warn('Using synthetic drum sound as fallback');
+            // this.buffer = this.createSyntheticDrum();
         }
     }
 
@@ -210,15 +211,12 @@ class SampleInstrument {
         });
         
         // Routing logic:
-        // - Connect to output if NO effects (default behavior)
-        // - Connect to output if effects exist AND STEREO keyword is present
-        // - Do NOT connect if effects exist but NO STEREO keyword
-        if (this.effects.length === 0 || hasStereoKeyword) {
-            effectNode.connect(gainNode);
-            gainNode.connect(this.destination);
-        }
+        // - Final effect node (or source if no effects) always connects to output
+        // - The -> operator only disconnects the source from direct output
+        effectNode.connect(gainNode);
+        gainNode.connect(this.destination);
         
-        gainNode.gain.value = 0.8;
+        gainNode.gain.value = this.gain;
         source.start(time);
     }
 }
@@ -345,13 +343,10 @@ class OscillatorInstrument {
         });
         
         // Routing logic:
-        // - Connect to output if NO effects (default behavior)
-        // - Connect to output if effects exist AND STEREO keyword is present
-        // - Do NOT connect if effects exist but NO STEREO keyword
-        if (this.effects.length === 0 || hasStereoKeyword) {
-            effectNode.connect(gainNode);
-            gainNode.connect(this.destination);
-        }
+        // - Final effect node (or source if no effects) always connects to output
+        // - The -> operator only disconnects the source from direct output
+        effectNode.connect(gainNode);
+        gainNode.connect(this.destination);
         
         osc.start(now);
         osc.stop(now + validAttack + validDecay + validRelease);

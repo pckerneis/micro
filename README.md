@@ -12,33 +12,65 @@ Features:
 
 **Default Behavior**: All instruments are connected to the audio output by default.
 
-**Explicit Routing**: When you use the `->` operator to chain effects, the instrument is **disconnected** from the output and only routed through the specified effects chain.
+**Effects Routing**: When you use the `->` operator to chain effects, only the **source** node is disconnected from output. The **final effect** in the chain remains connected to output.
 
-**STEREO Keyword**: Use `-> STEREO` to explicitly reconnect an effects chain back to the audio output.
+**STEREO Keyword**: Available for explicit reconnection if needed, but typically not required.
 
 ### Routing Examples
 
 ```
-pad = square()                    -- Connected to output (default)
-filtered = square() -> lowpass(220)  -- NOT connected to output (explicit routing)
-audible = square() -> lowpass(220) -> STEREO  -- Connected to output (explicit reconnection)
+pad = square()                    -- Source connected to output (default)
+filtered = square() -> lowpass(220)  -- Source bypassed, lowpass filter connected to output
+chained = square() -> delay(0.25) -> lowpass(220)  -- Source bypassed, lowpass filter connected to output
 ```
 
+## Instrument Types
+
+### Sample Instruments
+- **`sample('url')`** - Load audio sample from URL
+- **`sample(url='url', gain=1.5)`** - Named arguments with gain control
+- **Multi-line syntax** supported for complex definitions
+
+### Oscillator Instruments
+- **`square()`, `sine()`, `sawtooth()`, `triangle()`** - Waveform oscillators
+- **ADSR envelope** parameters: `attack`, `decay`, `sustain`, `release`
+
 ## Available Effects
+
+{{ ... }}
 
 - **`delay(time)`** - Delay effect with feedback (time in seconds)
 - **`lowpass(cutoff)`** - Low-pass filter (cutoff frequency in Hz)
 - **`lowpass(cutoff=220)`** - Alternative syntax with explicit parameter name
 
+## Sample Syntax Examples
+
+```
+-- Simple URL syntax
+kick = sample('https://cdn.freesound.org/previews/584/584792_11532701-lq.mp3')
+
+-- Named arguments with gain
+snare = sample(url='https://cdn.freesound.org/previews/13/13751_32468-lq.mp3', gain=1.5)
+
+-- Multi-line definition
+kick = sample(
+  url='https://cdn.freesound.org/previews/584/584792_11532701-lq.mp3'
+  gain=1.5
+)
+```
+
 ## Example Program
 
 ```
 -- this is a comment line
-kick=sample('./kick.wav') -- define a audio file player as 'kick'
-snare=sample('./snare.wav')
-pad=square() -> lowpass(cutoff=220) -> STEREO -- filtered pad connected to output
-bass=square(sustain=0 decay=0.2) -- you can provide options such as envelope parameters
-lead=sine() -> delay(0.75) -> lowpass(800) -> STEREO -- chained effects with output
+kick = sample(
+  url='https://cdn.freesound.org/previews/584/584792_11532701-lq.mp3'
+  gain=1.2
+)
+snare = sample('https://cdn.freesound.org/previews/13/13751_32468-lq.mp3')
+pad = square() -> lowpass(cutoff=220) -- filtered pad (lowpass connected to output)
+bass = square(sustain=0 decay=0.2) -- you can provide options such as envelope parameters
+lead = sine() -> delay(0.75) -> lowpass(800) -- chained effects (lowpass connected to output)
 
 @kick [30] 1 -- kick plays note 30 every 1 beat
 @pad [(70 77)] 2 -- use parenthesis for chords

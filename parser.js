@@ -16,8 +16,9 @@ class MicroParser {
         const errors = [];
         
         try {
-            // First pass: parse instrument definitions
-            for (const line of lines) {
+            // First pass: parse instrument definitions (including multi-line)
+            const instrumentLines = this.parseMultiLineDefinitions(lines);
+            for (const line of instrumentLines) {
                 if (line.includes('=') && !line.startsWith('@')) {
                     this.parseInstrumentDefinition(line, audioEngine, errors);
                 }
@@ -36,6 +37,43 @@ class MicroParser {
         }
     }
 
+    parseMultiLineDefinitions(lines) {
+        const instrumentLines = [];
+        let currentDefinition = '';
+        let inMultiLine = false;
+        let parenCount = 0;
+        
+        for (const line of lines) {
+            if (line.includes('=') && !line.startsWith('@') && !inMultiLine) {
+                // Start of potential multi-line definition
+                currentDefinition = line;
+                parenCount = (line.match(/\(/g) || []).length - (line.match(/\)/g) || []).length;
+                
+                if (parenCount > 0) {
+                    inMultiLine = true;
+                } else {
+                    instrumentLines.push(currentDefinition);
+                    currentDefinition = '';
+                }
+            } else if (inMultiLine) {
+                // Continue multi-line definition
+                currentDefinition += ' ' + line;
+                parenCount += (line.match(/\(/g) || []).length - (line.match(/\)/g) || []).length;
+                
+                if (parenCount <= 0) {
+                    instrumentLines.push(currentDefinition);
+                    currentDefinition = '';
+                    inMultiLine = false;
+                }
+            } else if (!line.includes('=') || line.startsWith('@')) {
+                // Pattern or other line, keep as is
+                instrumentLines.push(line);
+            }
+        }
+        
+        return instrumentLines;
+    }
+
     parseInstrumentDefinition(line, audioEngine, errors) {
         try {
             const equalIndex = line.indexOf('=');
@@ -44,13 +82,13 @@ class MicroParser {
 
             
             if (definition.startsWith('sample(')) {
-                // Parse sample instrument
-                const urlMatch = definition.match(/sample\(['"]([^'"]+)['"]\)/);
-                if (urlMatch) {
+                // Parse sample instrument with enhanced syntax
+                const { url, options } = this.parseSampleDefinition(definition);
+                if (url) {
                     // Parse effects chain for sample instruments too
                     const effects = this.parseEffects(definition);
                     
-                    let instrument = audioEngine.createSample(urlMatch[1]);
+                    let instrument = audioEngine.createSample(url, options);
                     
                     // Apply effects
                     effects.forEach(effect => {
@@ -64,7 +102,7 @@ class MicroParser {
                     });
                     
                     audioEngine.instruments.set(name, instrument);
-                    this.instruments.set(name, { type: 'sample', url: urlMatch[1], effects });
+                    this.instruments.set(name, { type: 'sample', url, options, effects });
                 }
             } else if (definition.includes('square(') || definition.includes('sine(') || definition.includes('sawtooth(') || definition.includes('triangle(')) {
                 // Parse oscillator instrument
@@ -123,6 +161,88 @@ class MicroParser {
         } catch (error) {
             errors.push(`Error parsing pattern "${line}": ${error.message}`);
         }
+    }
+
+    parseSampleDefinition(definition) {
+        // Extract content between sample( and ) before any ->
+        const beforeEffects = definition.split('->')[0];
+        const sampleMatch = beforeEffects.match(/sample\(([^)]*)\)/);
+        
+        if (!sampleMatch) {
+            return { url: null, options: {} };
+        }
+        
+        const content = sampleMatch[1].trim();
+        
+        // Handle empty sample()
+        if (!content) {
+            return { url: null, options: {} };
+        }
+        
+        // Check if it's a simple quoted string (positional syntax)
+        const simpleUrlMatch = content.match(/^['"]([^'"]+)['"]$/);
+        if (simpleUrlMatch) {
+            return { url: simpleUrlMatch[1], options: {} };
+        }
+        
+        // Parse named arguments
+        const options = {};
+        let url = null;
+        
+        // Split by commas, but respect quotes
+        const args = this.splitArguments(content);
+        
+        args.forEach(arg => {
+            const trimmed = arg.trim();
+            if (trimmed.includes('=')) {
+                // Named argument
+                const [key, value] = trimmed.split('=').map(s => s.trim());
+                if (key === 'url') {
+                    url = value.replace(/^['"]|['"]$/g, ''); // Remove quotes
+                } else if (key === 'gain') {
+                    options.gain = parseFloat(value);
+                }
+            } else {
+                // Positional argument (assume it's URL if no url= specified)
+                if (!url) {
+                    url = trimmed.replace(/^['"]|['"]$/g, ''); // Remove quotes
+                }
+            }
+        });
+        
+        return { url, options };
+    }
+
+    splitArguments(content) {
+        const args = [];
+        let current = '';
+        let inQuotes = false;
+        let quoteChar = '';
+        
+        for (let i = 0; i < content.length; i++) {
+            const char = content[i];
+            
+            if ((char === '"' || char === "'") && !inQuotes) {
+                inQuotes = true;
+                quoteChar = char;
+                current += char;
+            } else if (char === quoteChar && inQuotes) {
+                inQuotes = false;
+                quoteChar = '';
+                current += char;
+            } else if (char === ',' && !inQuotes) {
+                args.push(current);
+                current = '';
+            } else {
+                current += char;
+            }
+        }
+        
+        if (current.trim()) {
+            args.push(current);
+        }
+        
+        return args;
     }
 
     parseOptions(definition) {
