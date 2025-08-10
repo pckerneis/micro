@@ -27,6 +27,9 @@ class GraphParser {
         this.parseRoutingLines(lines);
         this.parsePatterns(lines);
         
+        // Add default STEREO connections for instruments without explicit routing
+        this.addDefaultStereoConnections();
+        
         return {
             nodes: this.nodes,
             connections: this.connections,
@@ -485,6 +488,40 @@ class GraphParser {
      */
     isValidNodeName(name) {
         return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);
+    }
+
+    /**
+     * Add default STEREO connections for instruments without explicit routing
+     * Per README: instruments should connect to STEREO by default unless explicitly routed
+     */
+    addDefaultStereoConnections() {
+        // Find all instrument nodes (not effects)
+        const instrumentTypes = ['sine', 'square', 'sawtooth', 'triangle', 'sample'];
+        const instrumentNodes = new Set();
+        
+        for (const [name, node] of this.nodes) {
+            if (instrumentTypes.includes(node.type)) {
+                instrumentNodes.add(name);
+            }
+        }
+        
+        // Find which instruments already have explicit routing (are sources in connections)
+        const routedInstruments = new Set();
+        for (const connection of this.connections) {
+            if (instrumentNodes.has(connection.from)) {
+                routedInstruments.add(connection.from);
+            }
+        }
+        
+        // Add default STEREO connections for instruments without explicit routing
+        for (const instrumentName of instrumentNodes) {
+            if (!routedInstruments.has(instrumentName)) {
+                this.connections.push({
+                    from: instrumentName,
+                    to: 'STEREO'
+                });
+            }
+        }
     }
 
     /**

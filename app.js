@@ -79,9 +79,11 @@ class MicroApp {
     setupEventListeners() {
         const playBtn = document.getElementById('playBtn');
         const stopBtn = document.getElementById('stopBtn');
+        const graphBtn = document.getElementById('graphBtn');
 
         playBtn.addEventListener('click', () => this.play());
         stopBtn.addEventListener('click', () => this.stop());
+        graphBtn.addEventListener('click', () => this.showGraph());
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
@@ -111,6 +113,9 @@ class MicroApp {
             });
             return;
         }
+        
+        // Store parsed graph for visualization
+        this.lastParsedGraph = parsedGraph;
         
         this.log('Code parsed successfully!', 'success');
         this.log(`Parsed ${parsedGraph.nodes.size} nodes, ${parsedGraph.connections.length} connections, ${parsedGraph.patterns.size} patterns`, 'info');
@@ -191,6 +196,205 @@ class MicroApp {
 
     updateStatus(status) {
         document.getElementById('status').textContent = status;
+    }
+
+    showGraph() {
+        if (!this.lastParsedGraph) {
+            this.log('No graph to display. Execute some code first!', 'warning');
+            return;
+        }
+
+        // Initialize Mermaid if not already done
+        if (typeof mermaid !== 'undefined' && !this.mermaidInitialized) {
+            mermaid.initialize({
+                theme: 'dark',
+                themeVariables: {
+                    primaryColor: '#569cd6',
+                    primaryTextColor: '#d4d4d4',
+                    primaryBorderColor: '#3e3e42',
+                    lineColor: '#858585',
+                    secondaryColor: '#2d2d30',
+                    tertiaryColor: '#1e1e1e'
+                },
+                flowchart: {
+                    useMaxWidth: false,
+                    htmlLabels: true,
+                    curve: 'basis',
+                    nodeSpacing: 80,
+                    rankSpacing: 120,
+                    padding: 40
+                },
+                gantt: {
+                    useMaxWidth: false
+                },
+                startOnLoad: false
+            });
+            this.mermaidInitialized = true;
+        }
+
+        // Generate Mermaid graph
+        const mermaidCode = this.generateMermaidGraph(this.lastParsedGraph);
+        
+        // Display in modal
+        const modal = document.getElementById('graphModal');
+        const container = document.getElementById('graphContainer');
+        
+        try {
+            // Clear previous content
+            container.innerHTML = '';
+            
+            // Create a div for the mermaid diagram
+            const graphDiv = document.createElement('div');
+            graphDiv.className = 'mermaid';
+            graphDiv.textContent = mermaidCode;
+            container.appendChild(graphDiv);
+            
+            // Render the mermaid diagram with explicit sizing
+            if (typeof mermaid !== 'undefined') {
+                // Force larger rendering by setting container size first
+                container.style.width = '100%';
+                container.style.height = '100%';
+                graphDiv.style.width = '100%';
+                graphDiv.style.height = '100%';
+                
+                // Render with explicit configuration
+                mermaid.render('graphId' + Date.now(), mermaidCode).then(result => {
+                    graphDiv.innerHTML = result.svg;
+                    
+                    // Force SVG to scale to container
+                    const svg = graphDiv.querySelector('svg');
+                    if (svg) {
+                        svg.setAttribute('width', '100%');
+                        svg.setAttribute('height', '100%');
+                        svg.style.width = '100%';
+                        svg.style.height = '100%';
+                        svg.style.maxWidth = 'none';
+                        svg.style.maxHeight = 'none';
+                    }
+                }).catch(error => {
+                    console.error('Mermaid render error:', error);
+                    // Fallback to old method
+                    mermaid.init(undefined, graphDiv);
+                });
+            }
+            
+            // Show the modal
+            modal.showModal();
+            
+            this.log('Graph visualization opened', 'success');
+        } catch (error) {
+            container.innerHTML = `<p style="color: #f44747;">Error rendering graph: ${error.message}</p>`;
+            modal.showModal();
+            this.log(`Graph visualization error: ${error.message}`, 'error');
+        }
+    }
+
+    generateMermaidGraph(parsedGraph) {
+        const { nodes, connections, patterns } = parsedGraph;
+        
+        console.log('Debug: Parsed graph nodes:', Array.from(nodes.entries()));
+        console.log('Debug: Parsed graph connections:', connections);
+        console.log('Debug: Parsed graph patterns:', Array.from(patterns.entries()));
+        
+        let mermaidCode = 'graph TD\n';
+        
+        // Add nodes with readable names and styling
+        const nodeNames = new Map();
+        const typeCounters = new Map();
+        
+        for (const [name, node] of nodes) {
+            let readableName = name;
+            
+            // Generate user-friendly names for anonymous nodes
+            if (name.startsWith('_anon_')) {
+                const nodeType = node.type;
+                const counter = (typeCounters.get(nodeType) || 0) + 1;
+                typeCounters.set(nodeType, counter);
+                
+                // Create descriptive names based on type
+                if (['sine', 'square', 'sawtooth', 'triangle'].includes(nodeType)) {
+                    readableName = `${nodeType}${counter > 1 ? counter : ''}`;
+                } else if (nodeType === 'sample') {
+                    readableName = `sample${counter > 1 ? counter : ''}`;
+                } else if (nodeType === 'delay') {
+                    readableName = `delay${counter > 1 ? counter : ''}`;
+                } else if (nodeType === 'gain') {
+                    readableName = `gain${counter > 1 ? counter : ''}`;
+                } else if (nodeType === 'lowpass') {
+                    readableName = `filter${counter > 1 ? counter : ''}`;
+                } else {
+                    readableName = `${nodeType}${counter > 1 ? counter : ''}`;
+                }
+            }
+            
+            nodeNames.set(name, readableName);
+            
+            // Determine node styling based on type
+            let nodeStyle = '';
+            let nodeIcon = '';
+            
+            if (['sine', 'square', 'sawtooth', 'triangle'].includes(node.type)) {
+                nodeStyle = ':::oscillator';
+                nodeIcon = '🎵';
+            } else if (node.type === 'sample') {
+                nodeStyle = ':::sample';
+                nodeIcon = '🥁';
+            } else if (node.type === 'delay') {
+                nodeStyle = ':::effect';
+                nodeIcon = '🔄';
+            } else if (node.type === 'gain') {
+                nodeStyle = ':::effect';
+                nodeIcon = '🔊';
+            } else if (node.type === 'lowpass') {
+                nodeStyle = ':::effect';
+                nodeIcon = '🎛️';
+            }
+            
+            // Format parameters for display with truncation
+            const params = Object.entries(node.parameters || {})
+                .map(([key, value]) => {
+                    let displayValue = String(value);
+                    // Truncate long parameter values (especially URLs)
+                    if (displayValue.length > 20) {
+                        displayValue = displayValue.substring(0, 17) + '...';
+                    }
+                    return `${key}=${displayValue}`;
+                })
+                .join('<br/>');
+            
+            const paramText = params ? `<br/><small>${params}</small>` : '';
+            
+            mermaidCode += `    ${name}["${nodeIcon} ${readableName}<br/>${node.type}${paramText}"]${nodeStyle}\n`;
+        }
+        
+        // Add STEREO output node
+        mermaidCode += '    STEREO["🔊 STEREO<br/>output"]:::output\n';
+        
+        // Add connections
+        console.log('Debug: All connections:', connections);
+        for (const connection of connections) {
+            console.log(`Debug: Adding connection ${connection.from} --> ${connection.to}`);
+            mermaidCode += `    ${connection.from} --> ${connection.to}\n`;
+        }
+        
+        // Add patterns as annotations
+        if (patterns.size > 0) {
+            mermaidCode += '\n    %% Patterns\n';
+            for (const [instrumentName, pattern] of patterns) {
+                const readableName = nodeNames.get(instrumentName) || instrumentName;
+                mermaidCode += `    %% @${readableName} [${pattern.notes.join(' ')}] ${pattern.duration}\n`;
+            }
+        }
+        
+        // Add styling classes
+        mermaidCode += `
+    classDef oscillator fill:#4a9eff,stroke:#2d5aa0,stroke-width:2px,color:#fff
+    classDef sample fill:#ff6b6b,stroke:#cc5555,stroke-width:2px,color:#fff
+    classDef effect fill:#51cf66,stroke:#37b24d,stroke-width:2px,color:#fff
+    classDef output fill:#ffd43b,stroke:#fab005,stroke-width:2px,color:#000
+`;
+        
+        return mermaidCode;
     }
 }
 

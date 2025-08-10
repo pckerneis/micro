@@ -640,8 +640,17 @@ AudioEngine.prototype.clearAll = function() {
     if (this.namedEffects && typeof this.namedEffects.clear === 'function') {
         this.namedEffects.clear();
     }
+    // DON'T stop playback - preserve seamless livecoding experience
+    // if (typeof this.stop === 'function') {
+    //     this.stop(); // Stop any current playback
+    // }
+};
+
+AudioEngine.prototype.clearAllAndStop = function() {
+    // Version that actually stops playback (for explicit stop requests)
+    this.clearAll();
     if (typeof this.stop === 'function') {
-        this.stop(); // Stop any current playback
+        this.stop();
     }
 };
 

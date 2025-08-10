@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -15,6 +16,7 @@
             <div class="controls">
                 <button id="playBtn" class="btn primary">▶ Play</button>
                 <button id="stopBtn" class="btn">⏹ Stop</button>
+                <button id="graphBtn" class="btn">Show Graph</button>
                 <span class="status" id="status">Ready</span>
             </div>
         </header>
@@ -52,6 +54,19 @@ lead -> STEREO
             </div>
         </main>
     </div>
+
+    <!-- Graph Visualization Modal -->
+    <dialog id="graphModal" class="graph-modal">
+        <div class="modal-header">
+            <h2>Audio Graph Visualization</h2>
+            <button class="close-btn" onclick="document.getElementById('graphModal').close()">×</button>
+        </div>
+        <div class="modal-content">
+            <div id="graphContainer" class="graph-container">
+                <p>No graph to display. Execute some code first!</p>
+            </div>
+        </div>
+    </dialog>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
