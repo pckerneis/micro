@@ -31,6 +31,13 @@ class MicroApp {
 
     initEditor() {
         const textarea = document.getElementById('editor');
+        
+        // Load saved code from localStorage
+        const savedCode = localStorage.getItem('micro-code');
+        if (savedCode) {
+            textarea.value = savedCode;
+        }
+        
         this.editor = CodeMirror.fromTextArea(textarea, {
             mode: 'javascript',
             theme: 'monokai',
@@ -42,20 +49,31 @@ class MicroApp {
             lineWrapping: true,
             extraKeys: {
                 'Ctrl-Enter': () => this.executeCode(),
-                'Cmd-Enter': () => this.executeCode()
+                'Cmd-Enter': () => this.executeCode(),
+                'Ctrl-S': (cm) => {
+                    this.saveCode();
+                    return false; // Prevent browser save dialog
+                },
+                'Cmd-S': (cm) => {
+                    this.saveCode();
+                    return false; // Prevent browser save dialog
+                }
             }
         });
 
-        // Auto-execute on change (with debounce)
-        let timeout;
+        // Auto-save to localStorage on change (but don't execute)
+        let saveTimeout;
         this.editor.on('change', () => {
-            clearTimeout(timeout);
-            timeout = setTimeout(() => {
-                if (this.audioEngine.isPlaying) {
-                    this.executeCode();
-                }
-            }, 500);
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(() => {
+                this.autoSaveCode();
+            }, 1000); // Auto-save after 1 second of inactivity
         });
+        
+        // Load saved code into editor if available
+        if (savedCode) {
+            this.editor.setValue(savedCode);
+        }
     }
 
     setupEventListeners() {
@@ -96,6 +114,19 @@ class MicroApp {
                 this.log(error, 'error');
             });
         }
+    }
+
+    saveCode() {
+        const code = this.editor.getValue();
+        localStorage.setItem('micro-code', code);
+        this.log('Code saved! Parsing...', 'info');
+        this.executeCode();
+    }
+
+    autoSaveCode() {
+        const code = this.editor.getValue();
+        localStorage.setItem('micro-code', code);
+        // Don't log auto-saves to avoid spam
     }
 
     async play() {

@@ -8,6 +8,10 @@ class MicroParser {
         this.instruments.clear();
         this.patterns.clear();
         
+        // Clear existing patterns from audio engine
+        audioEngine.patterns.clear();
+        audioEngine.instruments.clear();
+        
         const lines = code.split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('--'));
         const errors = [];
         
@@ -34,15 +38,33 @@ class MicroParser {
 
     parseInstrumentDefinition(line, audioEngine, errors) {
         try {
-            const [name, definition] = line.split('=').map(s => s.trim());
+            const equalIndex = line.indexOf('=');
+            const name = line.substring(0, equalIndex).trim();
+            const definition = line.substring(equalIndex + 1).trim();
+
             
             if (definition.startsWith('sample(')) {
                 // Parse sample instrument
                 const urlMatch = definition.match(/sample\(['"]([^'"]+)['"]\)/);
                 if (urlMatch) {
-                    const instrument = audioEngine.createSample(urlMatch[1]);
+                    // Parse effects chain for sample instruments too
+                    const effects = this.parseEffects(definition);
+                    
+                    let instrument = audioEngine.createSample(urlMatch[1]);
+                    
+                    // Apply effects
+                    effects.forEach(effect => {
+                        if (effect.type === 'delay') {
+                            instrument = instrument.delay(effect.time);
+                        } else if (effect.type === 'lowpass') {
+                            instrument = instrument.lowpass(effect.cutoff);
+                        } else if (effect.type === 'stereo') {
+                            instrument = instrument.stereo();
+                        }
+                    });
+                    
                     audioEngine.instruments.set(name, instrument);
-                    this.instruments.set(name, { type: 'sample', url: urlMatch[1] });
+                    this.instruments.set(name, { type: 'sample', url: urlMatch[1], effects });
                 }
             } else if (definition.includes('square(') || definition.includes('sine(') || definition.includes('sawtooth(') || definition.includes('triangle(')) {
                 // Parse oscillator instrument
@@ -55,12 +77,18 @@ class MicroParser {
                 // Parse effects chain
                 const effects = this.parseEffects(definition);
                 
+
+                
                 let instrument = audioEngine.createOscillator(type, options);
                 
                 // Apply effects
                 effects.forEach(effect => {
                     if (effect.type === 'delay') {
                         instrument = instrument.delay(effect.time);
+                    } else if (effect.type === 'lowpass') {
+                        instrument = instrument.lowpass(effect.cutoff);
+                    } else if (effect.type === 'stereo') {
+                        instrument = instrument.stereo();
                     }
                 });
                 
@@ -130,6 +158,13 @@ class MicroParser {
                     if (timeMatch) {
                         effects.push({ type: 'delay', time: parseFloat(timeMatch[1]) });
                     }
+                } else if (call.startsWith('lowpass(')) {
+                    const cutoffMatch = call.match(/lowpass\((?:cutoff=)?([^)]+)\)/);
+                    if (cutoffMatch) {
+                        effects.push({ type: 'lowpass', cutoff: parseFloat(cutoffMatch[1]) });
+                    }
+                } else if (call.trim() === 'STEREO') {
+                    effects.push({ type: 'stereo' });
                 }
             });
         }

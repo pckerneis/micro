@@ -104,15 +104,29 @@ class SampleInstrument {
         this.destination = destination;
         this.url = url;
         this.buffer = null;
+        this.effects = [];
+        this.hasExplicitRouting = false;
         this.loadSample();
     }
 
     async loadSample() {
         try {
-            // For demo purposes, create a synthetic drum sound
-            this.buffer = this.createSyntheticDrum();
+            // Fetch the audio file from URL
+            const response = await fetch(this.url);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            // Get the audio data as ArrayBuffer
+            const arrayBuffer = await response.arrayBuffer();
+            
+            // Decode the audio data
+            this.buffer = await this.audioContext.decodeAudioData(arrayBuffer);
+            console.log(`Successfully loaded sample: ${this.url}`);
+            
         } catch (error) {
-            console.warn(`Could not load sample ${this.url}, using synthetic sound`);
+            console.warn(`Could not load sample ${this.url}:`, error.message);
+            console.warn('Using synthetic drum sound as fallback');
             this.buffer = this.createSyntheticDrum();
         }
     }
@@ -134,6 +148,24 @@ class SampleInstrument {
         return buffer;
     }
 
+    addEffect(effect) {
+        this.effects.push(effect);
+        this.hasExplicitRouting = true;
+        return this;
+    }
+
+    delay(time) {
+        return this.addEffect({ type: 'delay', time });
+    }
+
+    lowpass(cutoff) {
+        return this.addEffect({ type: 'lowpass', cutoff });
+    }
+
+    stereo() {
+        return this.addEffect({ type: 'stereo' });
+    }
+
     play(note, time) {
         if (!this.buffer) return;
 
@@ -141,8 +173,50 @@ class SampleInstrument {
         const gainNode = this.audioContext.createGain();
         
         source.buffer = this.buffer;
-        source.connect(gainNode);
-        gainNode.connect(this.destination);
+        
+        // Connect through effects chain
+        let effectNode = source;
+        let hasStereoKeyword = this.effects.some(e => e.type === 'stereo');
+        
+        this.effects.forEach(effect => {
+            if (effect.type === 'delay') {
+                const delay = this.audioContext.createDelay();
+                const feedback = this.audioContext.createGain();
+                const wetGain = this.audioContext.createGain();
+                
+                const delayTime = isFinite(effect.time) && effect.time > 0 ? effect.time : 0.25;
+                delay.delayTime.value = Math.min(delayTime, 1.0);
+                feedback.gain.value = 0.3;
+                wetGain.gain.value = 0.3;
+                
+                effectNode.connect(delay);
+                delay.connect(feedback);
+                feedback.connect(delay);
+                delay.connect(wetGain);
+                effectNode = wetGain;
+                
+            } else if (effect.type === 'lowpass') {
+                const filter = this.audioContext.createBiquadFilter();
+                filter.type = 'lowpass';
+                
+                const cutoff = isFinite(effect.cutoff) && effect.cutoff > 0 ? effect.cutoff : 1000;
+                filter.frequency.value = Math.min(cutoff, this.audioContext.sampleRate / 2);
+                filter.Q.value = 1;
+                
+                effectNode.connect(filter);
+                effectNode = filter;
+            }
+            // Note: stereo effect doesn't create a node, it just marks for output connection
+        });
+        
+        // Routing logic:
+        // - Connect to output if NO effects (default behavior)
+        // - Connect to output if effects exist AND STEREO keyword is present
+        // - Do NOT connect if effects exist but NO STEREO keyword
+        if (this.effects.length === 0 || hasStereoKeyword) {
+            effectNode.connect(gainNode);
+            gainNode.connect(this.destination);
+        }
         
         gainNode.gain.value = 0.8;
         source.start(time);
@@ -162,15 +236,25 @@ class OscillatorInstrument {
             ...options
         };
         this.effects = [];
+        this.hasExplicitRouting = false; // Track if instrument has explicit routing
     }
 
     addEffect(effect) {
         this.effects.push(effect);
+        this.hasExplicitRouting = true; // Mark as having explicit routing
         return this;
     }
 
     delay(time) {
         return this.addEffect({ type: 'delay', time });
+    }
+
+    lowpass(cutoff) {
+        return this.addEffect({ type: 'lowpass', cutoff });
+    }
+
+    stereo() {
+        return this.addEffect({ type: 'stereo' });
     }
 
     play(note, time) {
@@ -220,7 +304,11 @@ class OscillatorInstrument {
         gainNode.gain.linearRampToValueAtTime(0, now + validAttack + validDecay + validRelease);
         
         // Connect through effects chain
-        let currentNode = osc;
+        let effectNode = osc;
+        let hasStereoKeyword = this.effects.some(e => e.type === 'stereo');
+        
+
+        
         this.effects.forEach(effect => {
             if (effect.type === 'delay') {
                 const delay = this.audioContext.createDelay();
@@ -233,16 +321,37 @@ class OscillatorInstrument {
                 feedback.gain.value = 0.3;
                 wetGain.gain.value = 0.3;
                 
-                currentNode.connect(delay);
+                effectNode.connect(delay);
                 delay.connect(feedback);
                 feedback.connect(delay);
                 delay.connect(wetGain);
-                wetGain.connect(gainNode);
+                effectNode = wetGain;
+                
+            } else if (effect.type === 'lowpass') {
+                const filter = this.audioContext.createBiquadFilter();
+                filter.type = 'lowpass';
+                
+                // Validate cutoff frequency
+                const cutoff = isFinite(effect.cutoff) && effect.cutoff > 0 ? effect.cutoff : 1000;
+                filter.frequency.value = Math.min(cutoff, this.audioContext.sampleRate / 2);
+                filter.Q.value = 1; // Default Q value
+                
+
+                
+                effectNode.connect(filter);
+                effectNode = filter;
             }
+            // Note: stereo effect doesn't create a node, it just marks for output connection
         });
         
-        currentNode.connect(gainNode);
-        gainNode.connect(this.destination);
+        // Routing logic:
+        // - Connect to output if NO effects (default behavior)
+        // - Connect to output if effects exist AND STEREO keyword is present
+        // - Do NOT connect if effects exist but NO STEREO keyword
+        if (this.effects.length === 0 || hasStereoKeyword) {
+            effectNode.connect(gainNode);
+            gainNode.connect(this.destination);
+        }
         
         osc.start(now);
         osc.stop(now + validAttack + validDecay + validRelease);

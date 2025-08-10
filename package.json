@@ -1,0 +1,16 @@
+{
+  "name": "micro-livecoding",
+  "version": "1.0.0",
+  "description": "Minimalistic livecoding web environment for music creation",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "keywords": ["livecoding", "music", "web-audio", "javascript"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}
