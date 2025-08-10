@@ -678,7 +678,11 @@ AudioEngine.prototype.addInstrument = function(name, type, parameters) {
 AudioEngine.prototype.setInstrumentEffectChain = function(instrumentName, effectChain) {
     const instrument = this.instruments.get(instrumentName);
     if (instrument) {
+        console.log(`Setting effect chain for ${instrumentName}:`, effectChain);
         instrument.effectChains = [effectChain]; // Wrap in array for multiple chains support
+        console.log(`Instrument ${instrumentName} now has effect chains:`, instrument.effectChains);
+    } else {
+        console.warn(`Instrument ${instrumentName} not found when setting effect chain`);
     }
 };
 

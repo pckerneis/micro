@@ -51,7 +51,16 @@ class GraphParser {
      * @returns {string[]} Array of processed lines
      */
     preprocessLines(code) {
-        const rawLines = code.split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('--'));
+        const rawLines = code.split('\n')
+            .map(line => {
+                // Remove inline comments (everything after --)
+                const commentIndex = line.indexOf('--');
+                if (commentIndex !== -1) {
+                    line = line.substring(0, commentIndex);
+                }
+                return line.trim();
+            })
+            .filter(line => line); // Remove empty lines
         const processedLines = [];
         let currentLine = '';
         let braceDepth = 0;
@@ -491,10 +500,24 @@ class GraphParser {
     }
 
     /**
-     * Add default STEREO connections for instruments without explicit routing
+     * Add default STEREO connections for nodes without explicit output routing
      * Per README: instruments should connect to STEREO by default unless explicitly routed
      */
     addDefaultStereoConnections() {
+        // Find all nodes that are sources (have outgoing connections)
+        const sourcesWithConnections = new Set();
+        for (const connection of this.connections) {
+            sourcesWithConnections.add(connection.from);
+        }
+        
+        // Find all nodes that are targets (have incoming connections) 
+        const targetsWithConnections = new Set();
+        for (const connection of this.connections) {
+            if (connection.to !== 'STEREO') {
+                targetsWithConnections.add(connection.to);
+            }
+        }
+        
         // Find all instrument nodes (not effects)
         const instrumentTypes = ['sine', 'square', 'sawtooth', 'triangle', 'sample'];
         const instrumentNodes = new Set();
@@ -505,21 +528,31 @@ class GraphParser {
             }
         }
         
-        // Find which instruments already have explicit routing (are sources in connections)
-        const routedInstruments = new Set();
-        for (const connection of this.connections) {
-            if (instrumentNodes.has(connection.from)) {
-                routedInstruments.add(connection.from);
-            }
-        }
-        
-        // Add default STEREO connections for instruments without explicit routing
+        // Case 1: Add STEREO connections for instruments without any routing
         for (const instrumentName of instrumentNodes) {
-            if (!routedInstruments.has(instrumentName)) {
+            if (!sourcesWithConnections.has(instrumentName)) {
                 this.connections.push({
                     from: instrumentName,
                     to: 'STEREO'
                 });
+            }
+        }
+        
+        // Case 2: Add STEREO connections for chain endpoints (nodes that have incoming connections but no outgoing connections to non-STEREO targets)
+        for (const [name, node] of this.nodes) {
+            // If this node receives connections but doesn't send any (except possibly to STEREO), it's a chain endpoint
+            if (targetsWithConnections.has(name) && !sourcesWithConnections.has(name)) {
+                // Check if it already connects to STEREO
+                const alreadyConnectsToStereo = this.connections.some(conn => 
+                    conn.from === name && conn.to === 'STEREO'
+                );
+                
+                if (!alreadyConnectsToStereo) {
+                    this.connections.push({
+                        from: name,
+                        to: 'STEREO'
+                    });
+                }
             }
         }
     }
