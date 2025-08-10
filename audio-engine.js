@@ -5,6 +5,7 @@ class AudioEngine {
         this.instruments = new Map();
         this.patterns = new Map();
         this.effects = new Map(); // Named effects storage
+        this.effectFactory = null; // Will be initialized with audioContext
         this.isPlaying = false;
         this.startTime = 0;
         this.bpm = 120;
@@ -23,6 +24,9 @@ class AudioEngine {
             this.masterGain.connect(this.audioContext.destination);
             this.masterGain.gain.value = 0.7;
             
+            // Effect factory will be implemented later
+            this.effectFactory = null;
+            
             console.log('Audio engine initialized');
             return true;
         } catch (error) {
@@ -39,7 +43,7 @@ class AudioEngine {
         return new OscillatorInstrument(this.audioContext, this.masterGain, type, options, this);
     }
 
-    createEffect(name, effectType, params = {}) {
+    createNamedEffect(name, effectType, params) {
         const effect = new EffectModule(this.audioContext, effectType, params);
         this.effects.set(name, effect);
         return effect;
@@ -133,28 +137,20 @@ class EffectModule {
         this.params = params;
         this.inputNode = null;
         this.outputNode = null;
-        this.effectChains = []; // Support for routing to other effects
+        
         this.createEffectNodes();
     }
 
     createEffectNodes() {
         if (this.effectType === 'delay') {
             const delay = this.audioContext.createDelay();
-            const feedback = this.audioContext.createGain();
-            const wetGain = this.audioContext.createGain();
             
             const delayTime = isFinite(this.params.time) && this.params.time > 0 ? this.params.time : 0.25;
             delay.delayTime.value = Math.min(delayTime, 1.0);
-            feedback.gain.value = 0.3;
-            wetGain.gain.value = 0.3;
             
-            // Create feedback loop
-            delay.connect(feedback);
-            feedback.connect(delay);
-            delay.connect(wetGain);
-            
+            // Pure delay line - no feedback, no wet gain
             this.inputNode = delay;
-            this.outputNode = wetGain;
+            this.outputNode = delay;
             
         } else if (this.effectType === 'lowpass') {
             const filter = this.audioContext.createBiquadFilter();
@@ -177,6 +173,18 @@ class EffectModule {
         }
     }
 
+    // Utility method to create effects consistently
+    createEffectInstance(effectType, params) {
+        return new EffectModule(this.audioContext, effectType, params);
+    }
+
+    // Process a single effect in a chain using unified EffectModule
+    processChainEffect(effect, effectNode) {
+        const effectModule = new EffectModule(this.audioContext, effect.type, effect);
+        effectNode.connect(effectModule.inputNode);
+        return effectModule.outputNode;
+    }
+
     connectTo(target) {
         if (target instanceof EffectModule) {
             this.outputNode.connect(target.inputNode);
@@ -186,12 +194,7 @@ class EffectModule {
         }
         return this;
     }
-
-    addEffectChain() {
-        this.effectChains.push([]);
-        return this;
-    }
-
+    
     routeTo(effectName, audioEngine) {
         if (audioEngine.effects.has(effectName)) {
             const targetEffect = audioEngine.effects.get(effectName);

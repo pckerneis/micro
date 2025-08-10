@@ -1,57 +1,55 @@
 class MicroParser {
     constructor() {
-        this.instruments = new Map();
+        this.namedRoutingLines = new Map();
         this.patterns = new Map();
     }
 
-    parse(code, audioEngine) {
+    parse(code) {
         this.instruments.clear();
         this.patterns.clear();
         
-        // Clear existing patterns from audio engine
-        audioEngine.patterns.clear();
-        audioEngine.instruments.clear();
-        
         const lines = code.split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('--'));
         const errors = [];
+
+        let inParamBlock = false;
         
         try {
-            // First pass: parse named effect definitions
-            for (const line of lines) {
-                if (line.startsWith('effect ') && line.includes('=')) {
-                    this.parseEffectDefinition(line, audioEngine, errors);
-                }
-            }
-            
-            // Second pass: parse instrument definitions (including multi-line)
-            const instrumentLines = this.parseMultiLineDefinitions(lines);
+            const instrumentLines = lines.filter(line => !line.startsWith('@'));
+
             for (const line of instrumentLines) {
-                if (line.includes('=') && !line.startsWith('@') && !line.startsWith('effect ')) {
-                    // Check if this is a named effect definition (name = effect(...))
-                    if (this.isNamedEffectDefinition(line)) {
-                        this.parseNamedEffectDefinition(line, audioEngine, errors);
-                    } else {
-                        this.parseInstrumentDefinition(line, audioEngine, errors);
+                if (line.includes('=')) {
+                    const parts = line.split('=');
+
+                    if (!isValidName(parts[0])) {
+                        errors.push('Invalid name');
+                        continue;
                     }
+
+                    if (this.namedRoutingLines.has(parts[0])) {
+                        errors.push(`Routing line ${parts[0]} is already defined.`);
+                        continue;
+                    }
+
+                    const routingLineName = parts[0];
+                    const routingLine = parseRoutingLine(parts[1], errors);
+                    this.namedRoutingLines.set(routingLineName, routingLine);
                 }
             }
+
+            // for (const line of lines) {
+            //     if (line.includes('->') && !line.startsWith('@')) {
+            //         // Check if it's a routing line (not an instrument definition)
+            //         const equalIndex = line.indexOf('=');
+            //         const arrowIndex = line.indexOf('->');
+            //
+            //         // It's a routing line if -> comes before = (or no = at all)
+            //         if (equalIndex === -1 || arrowIndex < equalIndex) {
+            //             console.log('Parsing routing line:', line);
+            //             this.parseRoutingLine(line, audioEngine, errors);
+            //         }
+            //     }
+            // }
             
-            // Third pass: parse routing lines (parallel routing support)
-            for (const line of lines) {
-                if (line.includes('->') && !line.startsWith('@')) {
-                    // Check if it's a routing line (not an instrument definition)
-                    const equalIndex = line.indexOf('=');
-                    const arrowIndex = line.indexOf('->');
-                    
-                    // It's a routing line if -> comes before = (or no = at all)
-                    if (equalIndex === -1 || arrowIndex < equalIndex) {
-                        console.log('Parsing routing line:', line);
-                        this.parseRoutingLine(line, audioEngine, errors);
-                    }
-                }
-            }
-            
-            // Third pass: parse patterns
             for (const line of lines) {
                 if (line.startsWith('@')) {
                     this.parsePattern(line, audioEngine, errors);
@@ -188,7 +186,7 @@ class MicroParser {
             const effect = this.parseEffect(definition);
             if (effect) {
                 // Create the named effect in the audio engine
-                audioEngine.createEffect(name, effect.type, effect);
+                audioEngine.createNamedEffect(name, effect.type, effect);
                 console.log(`Created named effect: ${name}`);
             } else {
                 errors.push(`Failed to parse named effect: ${definition}`);
@@ -426,27 +424,6 @@ class MicroParser {
         return args;
     }
 
-    parseEffect(effectDef) {
-        // Parse individual effect definition for named effects
-        if (effectDef.startsWith('delay(')) {
-            const timeMatch = effectDef.match(/delay\((?:time=)?([^)]+)\)/);
-            if (timeMatch) {
-                return { type: 'delay', time: parseFloat(timeMatch[1]) };
-            }
-        } else if (effectDef.startsWith('lowpass(')) {
-            const cutoffMatch = effectDef.match(/lowpass\((?:cutoff=)?([^)]+)\)/);
-            if (cutoffMatch) {
-                return { type: 'lowpass', cutoff: parseFloat(cutoffMatch[1]) };
-            }
-        } else if (effectDef.startsWith('gain(')) {
-            const levelMatch = effectDef.match(/gain\((?:level=)?([^)]+)\)/);
-            if (levelMatch) {
-                return { type: 'gain', level: parseFloat(levelMatch[1]) };
-            }
-        }
-        return null;
-    }
-
     parseOptions(definition) {
         const options = {};
         const optionsMatch = definition.match(/\(([^)]*)\)/);
@@ -549,4 +526,9 @@ class MicroParser {
         }
         return parseFloat(durationStr);
     }
+}
+
+function isValidName(str) {
+    // Name is a string of letters, numbers, and underscores, starting with a letter or underscore
+    return /[a-zA-Z_][a-zA-Z0-9_]*/.test(str);
 }
