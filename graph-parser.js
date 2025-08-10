@@ -166,7 +166,7 @@ class GraphParser {
      */
     parseRoutingLines(lines) {
         for (const line of lines) {
-            if (line.includes('->') && !line.includes('=') && !line.startsWith('@')) {
+            if (line.includes('->') && !this.isAssignmentLine(line) && !line.startsWith('@')) {
                 this.parseRouting(line);
             }
         }
@@ -210,46 +210,35 @@ class GraphParser {
             return;
         }
 
-        // First part becomes the named node
-        const firstNode = this.parseNodeExpression(parts[0]);
-        if (firstNode) {
-            firstNode.name = name;
-            this.nodes.set(name, firstNode);
-        }
-
-        // Create connections for the chain
-        let currentNodeName = name;
-        for (let i = 1; i < parts.length; i++) {
-            const targetExpression = parts[i];
-            const targetNode = this.parseNodeExpression(targetExpression);
+        // Create all nodes first, then assign the name to the last one
+        const nodeNames = [];
+        
+        // Process each part in the chain
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            const node = this.parseNodeExpression(part);
             
-            if (targetNode) {
-                // Create anonymous node for inline definitions
-                const targetName = targetNode.name || this.generateAnonymousName();
-                targetNode.name = targetName;
-                this.nodes.set(targetName, targetNode);
-                
-                // Create connection
-                this.connections.push({
-                    from: currentNodeName,
-                    to: targetName
-                });
-                
-                currentNodeName = targetName;
-            } else if (targetExpression === 'STEREO') {
-                // Connection to output
-                this.connections.push({
-                    from: currentNodeName,
-                    to: 'STEREO'
-                });
+            if (node) {
+                // Create node with temporary name (will rename last one to the chain name)
+                const nodeName = (i === parts.length - 1) ? name : this.generateAnonymousName();
+                node.name = nodeName;
+                this.nodes.set(nodeName, node);
+                nodeNames.push(nodeName);
+            } else if (part === 'STEREO') {
+                // STEREO is not a node, just a connection target
+                nodeNames.push('STEREO');
             } else {
                 // Reference to existing node
-                this.connections.push({
-                    from: currentNodeName,
-                    to: targetExpression
-                });
-                currentNodeName = targetExpression;
+                nodeNames.push(part);
             }
+        }
+
+        // Create connections between consecutive nodes
+        for (let i = 0; i < nodeNames.length - 1; i++) {
+            this.connections.push({
+                from: nodeNames[i],
+                to: nodeNames[i + 1]
+            });
         }
     }
 
