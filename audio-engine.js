@@ -39,7 +39,7 @@ class AudioEngine {
     }
 
     addPattern(name, notes, duration) {
-        this.patterns.set(name, { notes, duration, currentStep: 0 });
+        this.patterns.set(name, { notes, duration, lastTriggeredStep: -1 });
     }
 
     play() {
@@ -62,21 +62,30 @@ class AudioEngine {
             this.timerID = null;
         }
         
-        // Reset pattern positions
+        // Reset pattern trigger tracking
         this.patterns.forEach(pattern => {
-            pattern.currentStep = 0;
+            pattern.lastTriggeredStep = -1;
         });
     }
 
     scheduler() {
         while (this.nextEventTime < this.audioContext.currentTime + this.scheduleAheadTime / 1000) {
             this.scheduleNote(this.nextEventTime);
-            this.nextEventTime += this.beatDuration / 4; // 16th note resolution
+            
+            // Calculate next event time based on all pattern step durations
+            const nextIncrement = this.calculateNextIncrement();
+            this.nextEventTime += nextIncrement;
         }
         
         if (this.isPlaying) {
             this.timerID = setTimeout(() => this.scheduler(), this.lookahead);
         }
+    }
+
+    calculateNextIncrement() {
+        // Use a high-resolution scheduler that can handle any subdivision
+        // This ensures we catch all timing events regardless of step duration
+        return this.beatDuration / 96; // 96th note resolution (handles triplets, quintuplets, etc.)
     }
 
     scheduleNote(time) {
@@ -85,14 +94,26 @@ class AudioEngine {
             if (!instrument) return;
 
             const stepTime = pattern.duration * this.beatDuration;
-            const currentBeat = (time - this.startTime) % stepTime;
+            const elapsedTime = time - this.startTime;
             
-            if (Math.abs(currentBeat) < 0.01 || Math.abs(currentBeat - stepTime) < 0.01) {
-                const note = pattern.notes[pattern.currentStep % pattern.notes.length];
+            // Calculate which step we should be on based on elapsed time
+            const totalSteps = Math.floor(elapsedTime / stepTime);
+            const currentStepInPattern = totalSteps % pattern.notes.length;
+            
+            // Calculate the exact time when this step should trigger
+            const stepTriggerTime = this.startTime + (totalSteps * stepTime);
+            const timeDifference = Math.abs(time - stepTriggerTime);
+            
+            // Trigger if we're within the schedule ahead window and haven't triggered this step yet
+            const isStepTrigger = timeDifference < (this.scheduleAheadTime / 1000);
+            
+            // Only trigger if this is a new step (prevent duplicate triggers)
+            if (isStepTrigger && totalSteps !== pattern.lastTriggeredStep) {
+                const note = pattern.notes[currentStepInPattern];
                 if (note !== '_' && note !== null) {
-                    instrument.play(note, this.startTime + time);
+                    instrument.play(note, stepTriggerTime);
                 }
-                pattern.currentStep++;
+                pattern.lastTriggeredStep = totalSteps;
             }
         });
     }
