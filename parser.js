@@ -24,7 +24,14 @@ class MicroParser {
                 }
             }
             
-            // Second pass: parse patterns
+            // Second pass: parse routing lines (parallel routing support)
+            for (const line of lines) {
+                if (line.includes('->') && !line.includes('=') && !line.startsWith('@')) {
+                    this.parseRoutingLine(line, audioEngine, errors);
+                }
+            }
+            
+            // Third pass: parse patterns
             for (const line of lines) {
                 if (line.startsWith('@')) {
                     this.parsePattern(line, audioEngine, errors);
@@ -74,6 +81,72 @@ class MicroParser {
         return instrumentLines;
     }
 
+    parseRoutingLine(line, audioEngine, errors) {
+        try {
+            // Parse routing line: instrumentName -> effect1 -> effect2
+            const parts = line.split('->').map(p => p.trim());
+            const instrumentName = parts[0];
+            
+            if (!audioEngine.instruments.has(instrumentName)) {
+                errors.push(`Unknown instrument in routing: ${instrumentName}`);
+                return;
+            }
+            
+            const instrument = audioEngine.instruments.get(instrumentName);
+            
+            // Start a new effect chain for parallel routing
+            instrument.addEffectChain();
+            
+            // Parse and add effects to the new chain
+            for (let i = 1; i < parts.length; i++) {
+                const effectStr = parts[i];
+                const effect = this.parseEffect(effectStr);
+                if (effect) {
+                    if (effect.type === 'delay') {
+                        instrument.delay(effect.time);
+                    } else if (effect.type === 'lowpass') {
+                        instrument.lowpass(effect.cutoff);
+                    } else if (effect.type === 'gain') {
+                        instrument.gain(effect.level);
+                    } else if (effect.type === 'stereo') {
+                        instrument.stereo();
+                    }
+                }
+            }
+        } catch (error) {
+            errors.push(`Error parsing routing "${line}": ${error.message}`);
+        }
+    }
+
+    parseEffect(effectStr) {
+        // Parse individual effect string like "gain(0.7)" or "delay(0.75)"
+        if (effectStr === 'STEREO') {
+            return { type: 'stereo' };
+        }
+        
+        const match = effectStr.match(/(\w+)\(([^)]*)\)/);
+        if (!match) return null;
+        
+        const [, effectType, params] = match;
+        
+        switch (effectType) {
+            case 'delay':
+                const time = parseFloat(params) || 0.25;
+                return { type: 'delay', time };
+                
+            case 'lowpass':
+                const cutoff = parseFloat(params) || 1000;
+                return { type: 'lowpass', cutoff };
+                
+            case 'gain':
+                const level = parseFloat(params);
+                return { type: 'gain', level: isFinite(level) ? level : 1.0 };
+                
+            default:
+                return null;
+        }
+    }
+
     parseInstrumentDefinition(line, audioEngine, errors) {
         try {
             const equalIndex = line.indexOf('=');
@@ -96,6 +169,8 @@ class MicroParser {
                             instrument = instrument.delay(effect.time);
                         } else if (effect.type === 'lowpass') {
                             instrument = instrument.lowpass(effect.cutoff);
+                        } else if (effect.type === 'gain') {
+                            instrument = instrument.gain(effect.level);
                         } else if (effect.type === 'stereo') {
                             instrument = instrument.stereo();
                         }
@@ -125,6 +200,8 @@ class MicroParser {
                         instrument = instrument.delay(effect.time);
                     } else if (effect.type === 'lowpass') {
                         instrument = instrument.lowpass(effect.cutoff);
+                    } else if (effect.type === 'gain') {
+                        instrument = instrument.gain(effect.level);
                     } else if (effect.type === 'stereo') {
                         instrument = instrument.stereo();
                     }
@@ -282,6 +359,11 @@ class MicroParser {
                     const cutoffMatch = call.match(/lowpass\((?:cutoff=)?([^)]+)\)/);
                     if (cutoffMatch) {
                         effects.push({ type: 'lowpass', cutoff: parseFloat(cutoffMatch[1]) });
+                    }
+                } else if (call.startsWith('gain(')) {
+                    const levelMatch = call.match(/gain\(([^)]+)\)/);
+                    if (levelMatch) {
+                        effects.push({ type: 'gain', level: parseFloat(levelMatch[1]) });
                     }
                 } else if (call.trim() === 'STEREO') {
                     effects.push({ type: 'stereo' });

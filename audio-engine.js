@@ -125,7 +125,7 @@ class SampleInstrument {
         this.destination = destination;
         this.url = url;
         this.buffer = null;
-        this.effects = [];
+        this.effectChains = []; // Array of effect chains for parallel routing
         this.hasExplicitRouting = false;
         this.gain = options.gain !== undefined ? options.gain : 1.0;
         this.loadSample();
@@ -171,7 +171,19 @@ class SampleInstrument {
     }
 
     addEffect(effect) {
-        this.effects.push(effect);
+        // Add effect to the current chain (or create a new chain)
+        if (this.effectChains.length === 0) {
+            this.effectChains.push([]);
+        }
+        const currentChain = this.effectChains[this.effectChains.length - 1];
+        currentChain.push(effect);
+        this.hasExplicitRouting = true;
+        return this;
+    }
+
+    addEffectChain() {
+        // Start a new parallel effect chain
+        this.effectChains.push([]);
         this.hasExplicitRouting = true;
         return this;
     }
@@ -184,6 +196,10 @@ class SampleInstrument {
         return this.addEffect({ type: 'lowpass', cutoff });
     }
 
+    gain(level) {
+        return this.addEffect({ type: 'gain', level });
+    }
+
     stereo() {
         return this.addEffect({ type: 'stereo' });
     }
@@ -192,53 +208,71 @@ class SampleInstrument {
         if (!this.buffer) return;
 
         const source = this.audioContext.createBufferSource();
-        const gainNode = this.audioContext.createGain();
-        
         source.buffer = this.buffer;
         
-        // Connect through effects chain
-        let effectNode = source;
-        let hasStereoKeyword = this.effects.some(e => e.type === 'stereo');
-        
-        this.effects.forEach(effect => {
-            if (effect.type === 'delay') {
-                const delay = this.audioContext.createDelay();
-                const feedback = this.audioContext.createGain();
-                const wetGain = this.audioContext.createGain();
+        // If no explicit routing, connect directly to output
+        if (this.effectChains.length === 0) {
+            const gainNode = this.audioContext.createGain();
+            gainNode.gain.value = this.gain;
+            
+            source.connect(gainNode);
+            gainNode.connect(this.destination);
+        } else {
+            // Process each parallel effect chain
+            this.effectChains.forEach(chain => {
+                // Create a separate gain node for this chain to split the signal
+                const chainInput = this.audioContext.createGain();
+                chainInput.gain.value = 1.0;
+                source.connect(chainInput);
                 
-                const delayTime = isFinite(effect.time) && effect.time > 0 ? effect.time : 0.25;
-                delay.delayTime.value = Math.min(delayTime, 1.0);
-                feedback.gain.value = 0.3;
-                wetGain.gain.value = 0.3;
+                let effectNode = chainInput;
                 
-                effectNode.connect(delay);
-                delay.connect(feedback);
-                feedback.connect(delay);
-                delay.connect(wetGain);
-                effectNode = wetGain;
+                // Process effects in this chain
+                chain.forEach(effect => {
+                    if (effect.type === 'delay') {
+                        const delay = this.audioContext.createDelay();
+                        const feedback = this.audioContext.createGain();
+                        const wetGain = this.audioContext.createGain();
+                        
+                        const delayTime = isFinite(effect.time) && effect.time > 0 ? effect.time : 0.25;
+                        delay.delayTime.value = Math.min(delayTime, 1.0);
+                        feedback.gain.value = 0.3;
+                        wetGain.gain.value = 0.3;
+                        
+                        effectNode.connect(delay);
+                        delay.connect(feedback);
+                        feedback.connect(delay);
+                        delay.connect(wetGain);
+                        effectNode = wetGain;
+                        
+                    } else if (effect.type === 'lowpass') {
+                        const filter = this.audioContext.createBiquadFilter();
+                        filter.type = 'lowpass';
+                        
+                        const cutoff = isFinite(effect.cutoff) && effect.cutoff > 0 ? effect.cutoff : 1000;
+                        filter.frequency.value = Math.min(cutoff, this.audioContext.sampleRate / 2);
+                        filter.Q.value = 1;
+                        
+                        effectNode.connect(filter);
+                        effectNode = filter;
+                        
+                    } else if (effect.type === 'gain') {
+                        const effectGain = this.audioContext.createGain();
+                        const level = isFinite(effect.level) && effect.level >= 0 ? effect.level : 1.0;
+                        effectGain.gain.value = level;
+                        
+                        effectNode.connect(effectGain);
+                        effectNode = effectGain;
+                    }
+                });
                 
-            } else if (effect.type === 'lowpass') {
-                const filter = this.audioContext.createBiquadFilter();
-                filter.type = 'lowpass';
-                
-                const cutoff = isFinite(effect.cutoff) && effect.cutoff > 0 ? effect.cutoff : 1000;
-                filter.frequency.value = Math.min(cutoff, this.audioContext.sampleRate / 2);
-                filter.Q.value = 1;
-                
-                effectNode.connect(filter);
-                effectNode = filter;
-            }
-            // Note: stereo effect doesn't create a node, it just marks for output connection
-        });
-        
-        // Routing logic:
-        // - Final effect node (or source if no effects) always connects to output
-        // - The -> operator only disconnects the source from direct output
-        effectNode.connect(gainNode);
-        gainNode.connect(this.destination);
-        
-        gainNode.gain.value = this.gain;
+                // Connect only the final node in this chain to output
+                effectNode.connect(this.destination);
+            });
+        }
+
         source.start(time);
+        source.stop(time + 2);
     }
 }
 
@@ -254,13 +288,25 @@ class OscillatorInstrument {
             release: options.release || 0.5,
             ...options
         };
-        this.effects = [];
+        this.effectChains = []; // Array of effect chains for parallel routing
         this.hasExplicitRouting = false; // Track if instrument has explicit routing
     }
 
     addEffect(effect) {
-        this.effects.push(effect);
-        this.hasExplicitRouting = true; // Mark as having explicit routing
+        // Add effect to the current chain (or create a new chain)
+        if (this.effectChains.length === 0) {
+            this.effectChains.push([]);
+        }
+        const currentChain = this.effectChains[this.effectChains.length - 1];
+        currentChain.push(effect);
+        this.hasExplicitRouting = true;
+        return this;
+    }
+
+    addEffectChain() {
+        // Start a new parallel effect chain
+        this.effectChains.push([]);
+        this.hasExplicitRouting = true;
         return this;
     }
 
@@ -270,6 +316,10 @@ class OscillatorInstrument {
 
     lowpass(cutoff) {
         return this.addEffect({ type: 'lowpass', cutoff });
+    }
+
+    gain(level) {
+        return this.addEffect({ type: 'gain', level });
     }
 
     stereo() {
@@ -322,52 +372,65 @@ class OscillatorInstrument {
         gainNode.gain.linearRampToValueAtTime(validSustain, now + validAttack + validDecay);
         gainNode.gain.linearRampToValueAtTime(0, now + validAttack + validDecay + validRelease);
         
-        // Connect through effects chain
-        let effectNode = osc;
-        let hasStereoKeyword = this.effects.some(e => e.type === 'stereo');
+        // Always connect oscillator through ADSR envelope gain node first
+        osc.connect(gainNode);
         
-
-        
-        this.effects.forEach(effect => {
-            if (effect.type === 'delay') {
-                const delay = this.audioContext.createDelay();
-                const feedback = this.audioContext.createGain();
-                const wetGain = this.audioContext.createGain();
+        // If no explicit routing, connect directly to output
+        if (this.effectChains.length === 0) {
+            gainNode.connect(this.destination);
+        } else {
+            // Process each parallel effect chain
+            this.effectChains.forEach(chain => {
+                // Create a separate gain node for this chain to split the signal
+                const chainInput = this.audioContext.createGain();
+                chainInput.gain.value = 1.0;
+                gainNode.connect(chainInput);
                 
-                // Validate delay time
-                const delayTime = isFinite(effect.time) && effect.time > 0 ? effect.time : 0.25;
-                delay.delayTime.value = Math.min(delayTime, 1.0); // Max 1 second delay
-                feedback.gain.value = 0.3;
-                wetGain.gain.value = 0.3;
+                let effectNode = chainInput;
                 
-                effectNode.connect(delay);
-                delay.connect(feedback);
-                feedback.connect(delay);
-                delay.connect(wetGain);
-                effectNode = wetGain;
+                // Process effects in this chain
+                chain.forEach(effect => {
+                    if (effect.type === 'delay') {
+                        const delay = this.audioContext.createDelay();
+                        const feedback = this.audioContext.createGain();
+                        const wetGain = this.audioContext.createGain();
+                        
+                        const delayTime = isFinite(effect.time) && effect.time > 0 ? effect.time : 0.25;
+                        delay.delayTime.value = Math.min(delayTime, 1.0);
+                        feedback.gain.value = 0.3;
+                        wetGain.gain.value = 0.3;
+                        
+                        effectNode.connect(delay);
+                        delay.connect(feedback);
+                        feedback.connect(delay);
+                        delay.connect(wetGain);
+                        effectNode = wetGain;
+                        
+                    } else if (effect.type === 'lowpass') {
+                        const filter = this.audioContext.createBiquadFilter();
+                        filter.type = 'lowpass';
+                        
+                        const cutoff = isFinite(effect.cutoff) && effect.cutoff > 0 ? effect.cutoff : 1000;
+                        filter.frequency.value = Math.min(cutoff, this.audioContext.sampleRate / 2);
+                        filter.Q.value = 1;
+                        
+                        effectNode.connect(filter);
+                        effectNode = filter;
+                        
+                    } else if (effect.type === 'gain') {
+                        const effectGain = this.audioContext.createGain();
+                        const level = isFinite(effect.level) && effect.level >= 0 ? effect.level : 1.0;
+                        effectGain.gain.value = level;
+                        
+                        effectNode.connect(effectGain);
+                        effectNode = effectGain;
+                    }
+                });
                 
-            } else if (effect.type === 'lowpass') {
-                const filter = this.audioContext.createBiquadFilter();
-                filter.type = 'lowpass';
-                
-                // Validate cutoff frequency
-                const cutoff = isFinite(effect.cutoff) && effect.cutoff > 0 ? effect.cutoff : 1000;
-                filter.frequency.value = Math.min(cutoff, this.audioContext.sampleRate / 2);
-                filter.Q.value = 1; // Default Q value
-                
-
-                
-                effectNode.connect(filter);
-                effectNode = filter;
-            }
-            // Note: stereo effect doesn't create a node, it just marks for output connection
-        });
-        
-        // Routing logic:
-        // - Final effect node (or source if no effects) always connects to output
-        // - The -> operator only disconnects the source from direct output
-        effectNode.connect(gainNode);
-        gainNode.connect(this.destination);
+                // Connect only the final node in this chain to output
+                effectNode.connect(this.destination);
+            });
+        }
         
         osc.start(now);
         osc.stop(now + validAttack + validDecay + validRelease);

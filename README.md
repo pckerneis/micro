@@ -35,13 +35,39 @@ chained = square() -> delay(0.25) -> lowpass(220)  -- Source bypassed, lowpass f
 - **`square()`, `sine()`, `sawtooth()`, `triangle()`** - Waveform oscillators
 - **ADSR envelope** parameters: `attack`, `decay`, `sustain`, `release`
 
-## Available Effects
+## Effects and Routing
 
-{{ ... }}
+Micro supports effects chains using the `->` operator and parallel routing:
 
-- **`delay(time)`** - Delay effect with feedback (time in seconds)
-- **`lowpass(cutoff)`** - Low-pass filter (cutoff frequency in Hz)
-- **`lowpass(cutoff=220)`** - Alternative syntax with explicit parameter name
+```javascript
+// Basic effects
+kick = sample('kick.wav') -> delay(0.5)
+lead = sine() -> lowpass(cutoff=800) -> delay(0.25)
+
+// Parallel routing - multiple effect chains from one instrument
+lead = sine()
+lead -> gain(0.7)                    // Dry signal at 70% volume
+lead -> delay(0.75) -> gain(0.2)     // Wet delay at 20% volume
+
+// Multi-line sample with effects
+snare = sample(
+    url='snare.wav',
+    gain=1.2
+) -> lowpass(cutoff=1200)
+```
+
+### Available Effects
+
+- **delay(time)**: Echo effect with feedback (time in seconds)
+- **lowpass(cutoff)**: Low-pass filter (cutoff frequency in Hz)
+- **gain(level)**: Volume control (level as multiplier, e.g., 0.5 = 50%)
+
+### Routing Behavior
+
+- **Without routing**: Instrument connects directly to output
+- **Single chain**: `instrument -> effect1 -> effect2`
+- **Parallel routing**: Multiple lines with same instrument name create parallel chains
+- **STEREO keyword**: Explicitly connects to output (usually not needed)
 
 ## Sample Syntax Examples
 
