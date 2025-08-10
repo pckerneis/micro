@@ -1,7 +1,7 @@
 class MicroApp {
     constructor() {
         this.audioEngine = new AudioEngine();
-        this.parser = new MicroParser();
+        this.parser = new GraphParser();
         this.editor = null;
         this.isInitialized = false;
     }
@@ -102,15 +102,30 @@ class MicroApp {
         const code = this.editor.getValue();
         this.log('Parsing code...', 'info');
         
-        const result = this.parser.parse(code, this.audioEngine);
+        // Step 1: Parse code with GraphParser (decoupled from audio engine)
+        const parsedGraph = this.parser.parse(code);
         
-        if (result.success) {
-            this.log('Code parsed successfully!', 'success');
+        if (parsedGraph.errors.length > 0) {
+            parsedGraph.errors.forEach(error => {
+                this.log(error, 'error');
+            });
+            return;
+        }
+        
+        this.log('Code parsed successfully!', 'success');
+        this.log(`Parsed ${parsedGraph.nodes.size} nodes, ${parsedGraph.connections.length} connections, ${parsedGraph.patterns.size} patterns`, 'info');
+        
+        // Step 2: Apply parsed graph to audio engine via GraphAdapter
+        this.log('Applying to audio engine...', 'info');
+        const integrationResult = this.audioEngine.applyParsedGraph(parsedGraph);
+        
+        if (integrationResult.success) {
+            this.log('Integration successful!', 'success');
             const instrumentCount = this.audioEngine.instruments.size;
             const patternCount = this.audioEngine.patterns.size;
             this.log(`Loaded ${instrumentCount} instruments, ${patternCount} patterns`, 'info');
         } else {
-            result.errors.forEach(error => {
+            integrationResult.errors.forEach(error => {
                 this.log(error, 'error');
             });
         }

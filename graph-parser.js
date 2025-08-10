@@ -426,6 +426,30 @@ class GraphParser {
     }
 
     /**
+     * Parse duration value, supporting fractions like 1/2, 1/4, etc.
+     */
+    parseDuration(durationStr) {
+        durationStr = durationStr.trim();
+        
+        // Check if it's a fraction
+        if (durationStr.includes('/')) {
+            const parts = durationStr.split('/');
+            if (parts.length === 2) {
+                const numerator = parseFloat(parts[0]);
+                const denominator = parseFloat(parts[1]);
+                if (isFinite(numerator) && isFinite(denominator) && denominator !== 0) {
+                    return numerator / denominator;
+                }
+            }
+            return null; // Invalid fraction
+        }
+        
+        // Try to parse as regular number
+        const num = parseFloat(durationStr);
+        return isFinite(num) ? num : null;
+    }
+
+    /**
      * Parse a pattern definition
      * Example: @lead [70] 1
      */
@@ -443,8 +467,8 @@ class GraphParser {
             return isFinite(num) ? num : note;
         });
 
-        const duration = parseFloat(durationStr);
-        if (!isFinite(duration) || duration <= 0) {
+        const duration = this.parseDuration(durationStr);
+        if (duration === null || duration <= 0) {
             this.errors.push(`Invalid pattern duration: ${durationStr}`);
             return;
         }

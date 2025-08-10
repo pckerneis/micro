@@ -24,12 +24,19 @@
                 <textarea id="editor">-- Welcome to Micro!
 -- This is a minimalistic livecoding environment for music
 
--- Define instruments
-kick = sample('./samples/kick.wav')
-snare = sample('./samples/snare.wav')
-pad = square()
-bass = square(sustain=0, decay=0.2)
-lead = sine() -> delay(0.75)
+-- Define instruments with new curly-brace syntax
+kick = sample{url='./samples/kick.wav'}
+snare = sample{url='./samples/snare.wav'}
+pad = square{decay=0.3, sustain=0.7}
+bass = square{sustain=0, decay=0.2}
+lead = sine{decay=0.1} -> delay{time=0.75}
+
+-- Routing
+kick -> STEREO
+snare -> STEREO
+pad -> gain{value=0.6} -> STEREO
+bass -> STEREO
+lead -> STEREO
 
 -- Create patterns
 @kick [30] 1
@@ -49,7 +56,8 @@ lead = sine() -> delay(0.75)
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
     <script src="audio-engine.js"></script>
-    <script src="parser.js"></script>
+    <script src="graph-parser.js"></script>
+    <script src="graph-adapter.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
