@@ -45,12 +45,10 @@ class GraphAdapter {
             if (this.isInstrumentType(node.type)) {
                 // Create instrument definition
                 this.createInstrument(name, node);
-            } else if (!name.startsWith('_anon_')) {
-                // Create named effect (only for explicitly named effects, not anonymous ones)
+            } else {
+                // Create named effect
                 this.audioEngine.createNamedEffect(name, node.type, node.parameters);
             }
-            // Anonymous effect nodes (_anon_xxx) are not pre-created as named effects
-            // They will be processed inline when building effect chains
         }
     }
 
@@ -140,12 +138,6 @@ class GraphAdapter {
      * Create an instrument with its base parameters
      */
     createInstrument(name, node) {
-        const instrumentDef = {
-            type: node.type,
-            parameters: node.parameters,
-            effectChains: [] // Will be populated by processConnections
-        };
-
         // Convert to audio engine format
         if (node.type === 'sample') {
             this.audioEngine.addInstrument(name, 'sample', {
@@ -183,37 +175,26 @@ class GraphAdapter {
             }
 
             // Check if target is a named effect
-            console.log(`Checking if ${target} is a named effect...`);
-            console.log(`Named effects:`, Array.from(this.audioEngine.namedEffects.keys()));
             if (this.audioEngine.namedEffects.has(target)) {
-                console.log(`${target} IS a named effect`);
                 effectChain.push({
                     type: 'named',
                     name: target
                 });
             } else {
-                console.log(`${target} is NOT a named effect, treating as inline`);
                 // Target should be an inline effect node
-                console.log(`Looking for inline effect node: ${target}`);
                 const targetNode = this.findNodeByName(target);
-                console.log(`Found node:`, targetNode);
                 if (targetNode) {
                     effectChain.push({
                         type: targetNode.type,
                         ...targetNode.parameters
                     });
-                } else {
-                    console.warn(`Could not find node: ${target}`);
                 }
             }
         }
 
         // Apply the effect chain to the instrument
-        console.log(`Built effect chain for ${instrumentName}:`, effectChain);
         if (effectChain.length > 0) {
             this.audioEngine.setInstrumentEffectChain(instrumentName, effectChain);
-        } else {
-            console.log(`No effect chain for ${instrumentName} - will connect directly to output`);
         }
     }
 

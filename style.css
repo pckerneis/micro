@@ -66,6 +66,63 @@ h1 {
     background: #4c4c4c;
 }
 
+.volume-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 15px;
+}
+
+.volume-control label {
+    font-size: 1.1rem;
+    color: #d4d4d4;
+}
+
+.volume-slider {
+    width: 80px;
+    height: 4px;
+    background: #3c3c3c;
+    outline: none;
+    border-radius: 2px;
+    appearance: none;
+    cursor: pointer;
+}
+
+.volume-slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: #0e639c;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+    background: #1177bb;
+}
+
+.volume-slider::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: #0e639c;
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+    transition: background 0.2s;
+}
+
+.volume-slider::-moz-range-thumb:hover {
+    background: #1177bb;
+}
+
+#volumeValue {
+    color: #d4d4d4;
+    font-size: 0.85rem;
+    min-width: 35px;
+    text-align: right;
+}
+
 .status {
     color: #4ec9b0;
     font-size: 0.9rem;

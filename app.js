@@ -21,6 +21,9 @@ class MicroApp {
             // Setup event listeners
             this.setupEventListeners();
             
+            // Initialize master gain to default slider value (70%)
+            this.setMasterGain(70);
+            
             this.isInitialized = true;
             this.log('Micro initialized successfully!', 'success');
             this.updateStatus('Ready');
@@ -80,10 +83,19 @@ class MicroApp {
         const playBtn = document.getElementById('playBtn');
         const stopBtn = document.getElementById('stopBtn');
         const graphBtn = document.getElementById('graphBtn');
+        const masterGainSlider = document.getElementById('masterGain');
+        const volumeValue = document.getElementById('volumeValue');
 
         playBtn.addEventListener('click', () => this.play());
         stopBtn.addEventListener('click', () => this.stop());
         graphBtn.addEventListener('click', () => this.showGraph());
+        
+        // Master gain control
+        masterGainSlider.addEventListener('input', (e) => {
+            const volume = parseInt(e.target.value);
+            this.setMasterGain(volume);
+            volumeValue.textContent = `${volume}%`;
+        });
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
@@ -146,7 +158,6 @@ class MicroApp {
     autoSaveCode() {
         const code = this.editor.getValue();
         localStorage.setItem('micro-code', code);
-        // Don't log auto-saves to avoid spam
     }
 
     async play() {
@@ -183,6 +194,14 @@ class MicroApp {
         } else {
             this.play();
         }
+    }
+
+    setMasterGain(volumePercent) {
+        if (!this.isInitialized || !this.audioEngine.masterGain) return;
+        
+        this.audioEngine.masterGain.gain.value = volumePercent / 100;
+        
+        this.log(`Master volume: ${volumePercent}%`, 'info');
     }
 
     log(message, type = 'info') {
@@ -292,10 +311,6 @@ class MicroApp {
     generateMermaidGraph(parsedGraph) {
         const { nodes, connections, patterns } = parsedGraph;
         
-        console.log('Debug: Parsed graph nodes:', Array.from(nodes.entries()));
-        console.log('Debug: Parsed graph connections:', connections);
-        console.log('Debug: Parsed graph patterns:', Array.from(patterns.entries()));
-        
         let mermaidCode = 'graph TD\n';
         
         // Add nodes with readable names and styling
@@ -371,9 +386,7 @@ class MicroApp {
         mermaidCode += '    STEREO["🔊 STEREO<br/>output"]:::output\n';
         
         // Add connections
-        console.log('Debug: All connections:', connections);
         for (const connection of connections) {
-            console.log(`Debug: Adding connection ${connection.from} --> ${connection.to}`);
             mermaidCode += `    ${connection.from} --> ${connection.to}\n`;
         }
         

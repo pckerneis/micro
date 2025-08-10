@@ -17,6 +17,11 @@
                 <button id="playBtn" class="btn primary">▶ Play</button>
                 <button id="stopBtn" class="btn">⏹ Stop</button>
                 <button id="graphBtn" class="btn">Show Graph</button>
+                <div class="volume-control">
+                    <label for="masterGain">🔊</label>
+                    <input type="range" id="masterGain" min="0" max="100" value="70" class="volume-slider">
+                    <span id="volumeValue">70%</span>
+                </div>
                 <span class="status" id="status">Ready</span>
             </div>
         </header>
