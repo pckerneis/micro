@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Graph Parser Test</title>
+    <style>
+        body { font-family: monospace; margin: 20px; background: #1e1e1e; color: #d4d4d4; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #444; }
+        .code { background: #2d2d2d; padding: 10px; margin: 10px 0; white-space: pre-wrap; }
+        .output { background: #0d1117; padding: 10px; margin: 10px 0; white-space: pre-wrap; }
+        .error { color: #ff6b6b; }
+        .success { color: #51cf66; }
+    </style>
+</head>
+<body>
+    <h1>Graph Parser Test</h1>
+    
+    <div class="test-section">
+        <h2>Test 1: Named line with one node</h2>
+        <div class="code" id="test1-code">delay = delay{time=0.33}</div>
+        <div class="output" id="test1-output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 2: Named line with two nodes</h2>
+        <div class="code" id="test2-code">lead = sine{decay=0.1, sustain=0} -> gain{value=0.5}</div>
+        <div class="output" id="test2-output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 3: Named line with inline node and reference</h2>
+        <div class="code" id="test3-code">delay = delay{time=0.33}
+delayedArp = sine{} -> delay</div>
+        <div class="output" id="test3-output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 4: Route-only line with references</h2>
+        <div class="code" id="test4-code">delayedArp = sine{}
+delayedArp -> STEREO</div>
+        <div class="output" id="test4-output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 5: Route-only line with inline node</h2>
+        <div class="code" id="test5-code">delayedArp = sine{}
+delayedArp -> gain{value=0.2} -> STEREO</div>
+        <div class="output" id="test5-output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 6: Multi-line parameters block</h2>
+        <div class="code" id="test6-code">pad = sine{
+  decay=0.1
+  sustain=0
+}</div>
+        <div class="output" id="test6-output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 7: Multi-line parameters block in routing</h2>
+        <div class="code" id="test7-code">delayedArp = sine{}
+delayedArp -> reverb{
+  roomSize=12
+  tail=3.0
+} -> delay{time=0.5}</div>
+        <div class="output" id="test7-output"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 8: Complete example with patterns</h2>
+        <div class="code" id="test8-code">-- Define effects
+delay = delay{time=0.33}
+reverb = reverb{roomSize=12, tail=3.0}
+
+-- Define instruments
+lead = sine{decay=0.1, sustain=0} -> gain{value=0.5}
+pad = sine{
+  decay=0.1
+  sustain=0
+}
+
+-- Routing
+lead -> delay -> STEREO
+pad -> reverb -> gain{value=0.3} -> STEREO
+
+-- Patterns
+@lead [70 _ 74 _] 0.25
+@pad [60 64 67] 2.0</div>
+        <div class="output" id="test8-output"></div>
+    </div>
+
+    <script src="graph-parser.js"></script>
+    <script>
+        function runTest(testNum, code) {
+            const parser = new GraphParser();
+            const result = parser.parse(code);
+            
+            let output = '';
+            
+            // Show nodes
+            if (result.nodes.size > 0) {
+                output += '=== NODES ===\n';
+                for (const [name, node] of result.nodes) {
+                    output += `${name}: ${node.type} ${JSON.stringify(node.parameters)}\n`;
+                }
+                output += '\n';
+            }
+            
+            // Show connections
+            if (result.connections.length > 0) {
+                output += '=== CONNECTIONS ===\n';
+                for (const conn of result.connections) {
+                    output += `${conn.from} -> ${conn.to}\n`;
+                }
+                output += '\n';
+            }
+            
+            // Show patterns
+            if (result.patterns.size > 0) {
+                output += '=== PATTERNS ===\n';
+                for (const [name, pattern] of result.patterns) {
+                    output += `@${name} [${pattern.notes.join(' ')}] ${pattern.duration}\n`;
+                }
+                output += '\n';
+            }
+            
+            // Show errors
+            if (result.errors.length > 0) {
+                output += '=== ERRORS ===\n';
+                for (const error of result.errors) {
+                    output += `ERROR: ${error}\n`;
+                }
+            }
+            
+            if (!output) {
+                output = 'No output generated';
+            }
+            
+            const outputElement = document.getElementById(`test${testNum}-output`);
+            outputElement.textContent = output;
+            outputElement.className = result.errors.length > 0 ? 'output error' : 'output success';
+        }
+
+        // Run all tests
+        window.addEventListener('load', () => {
+            runTest(1, document.getElementById('test1-code').textContent);
+            runTest(2, document.getElementById('test2-code').textContent);
+            runTest(3, document.getElementById('test3-code').textContent);
+            runTest(4, document.getElementById('test4-code').textContent);
+            runTest(5, document.getElementById('test5-code').textContent);
+            runTest(6, document.getElementById('test6-code').textContent);
+            runTest(7, document.getElementById('test7-code').textContent);
+            runTest(8, document.getElementById('test8-code').textContent);
+        });
+    </script>
+</body>
+</html>
