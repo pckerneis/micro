@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Micro - Livecoding Environment</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/monokai.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Micro</h1>
+            <div class="controls">
+                <button id="playBtn" class="btn primary">▶ Play</button>
+                <button id="stopBtn" class="btn">⏹ Stop</button>
+                <span class="status" id="status">Ready</span>
+            </div>
+        </header>
+        
+        <main>
+            <div class="editor-container">
+                <textarea id="editor">-- Welcome to Micro!
+-- This is a minimalistic livecoding environment for music
+
+-- Define instruments
+kick = sample('./samples/kick.wav')
+snare = sample('./samples/snare.wav')
+pad = square()
+bass = square(sustain=0, decay=0.2)
+lead = sine() -> delay(0.75)
+
+-- Create patterns
+@kick [30] 1
+@pad [(70 77)] 2
+@lead [70 77 74 76 72 81] 1/8
+@snare [_ 46] 1</textarea>
+            </div>
+            
+            <div class="output-container">
+                <div class="console" id="console">
+                    <div class="console-line">Micro v1.0 - Ready to code music!</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+    <script src="audio-engine.js"></script>
+    <script src="parser.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

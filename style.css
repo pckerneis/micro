@@ -1,0 +1,140 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    background: #2d2d30;
+    border-bottom: 1px solid #3e3e42;
+}
+
+h1 {
+    font-size: 1.5rem;
+    color: #569cd6;
+}
+
+.controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.9rem;
+    transition: background-color 0.2s;
+}
+
+.btn.primary {
+    background: #0e639c;
+    color: white;
+}
+
+.btn.primary:hover {
+    background: #1177bb;
+}
+
+.btn:not(.primary) {
+    background: #3c3c3c;
+    color: #d4d4d4;
+}
+
+.btn:not(.primary):hover {
+    background: #4c4c4c;
+}
+
+.status {
+    color: #4ec9b0;
+    font-size: 0.9rem;
+}
+
+main {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.editor-container {
+    flex: 2;
+    display: flex;
+    flex-direction: column;
+}
+
+.CodeMirror {
+    height: 100% !important;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.output-container {
+    flex: 1;
+    background: #252526;
+    border-left: 1px solid #3e3e42;
+    display: flex;
+    flex-direction: column;
+}
+
+.console {
+    flex: 1;
+    padding: 1rem;
+    overflow-y: auto;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.console-line {
+    margin-bottom: 0.5rem;
+}
+
+.console-line.error {
+    color: #f48771;
+}
+
+.console-line.success {
+    color: #4ec9b0;
+}
+
+.console-line.info {
+    color: #9cdcfe;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1e1e1e;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #424242;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #4f4f4f;
+}
