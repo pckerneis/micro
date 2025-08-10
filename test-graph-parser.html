@@ -4,11 +4,80 @@
     <title>Graph Parser Test</title>
     <style>
         body { font-family: monospace; margin: 20px; background: #1e1e1e; color: #d4d4d4; }
-        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #444; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #444; position: relative; }
         .code { background: #2d2d2d; padding: 10px; margin: 10px 0; white-space: pre-wrap; }
         .output { background: #0d1117; padding: 10px; margin: 10px 0; white-space: pre-wrap; }
         .error { color: #ff6b6b; }
         .success { color: #51cf66; }
+        
+        .show-graph-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #0969da;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .show-graph-btn:hover {
+            background: #0860ca;
+        }
+        
+        .graph-modal {
+            border: none;
+            border-radius: 8px;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            max-width: 90vw;
+            max-height: 90vh;
+            padding: 0;
+        }
+        .graph-modal::backdrop {
+            background: rgba(0, 0, 0, 0.8);
+        }
+        .modal-header {
+            background: #2d2d2d;
+            padding: 15px 20px;
+            border-bottom: 1px solid #444;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-title {
+            margin: 0;
+            font-size: 18px;
+        }
+        .close-btn {
+            background: none;
+            border: none;
+            color: #d4d4d4;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .close-btn:hover {
+            background: #444;
+            border-radius: 4px;
+        }
+        .modal-content {
+            padding: 20px;
+            overflow: auto;
+            max-height: calc(90vh - 80px);
+        }
+        .mermaid-container {
+            background: white;
+            border-radius: 4px;
+            padding: 20px;
+            margin: 10px 0;
+        }
     </style>
 </head>
 <body>
@@ -16,18 +85,21 @@
     
     <div class="test-section">
         <h2>Test 1: Named line with one node</h2>
+        <button class="show-graph-btn" onclick="showGraph(1)">Show Graph</button>
         <div class="code" id="test1-code">delay = delay{time=0.33}</div>
         <div class="output" id="test1-output"></div>
     </div>
 
     <div class="test-section">
         <h2>Test 2: Named line with two nodes</h2>
+        <button class="show-graph-btn" onclick="showGraph(2)">Show Graph</button>
         <div class="code" id="test2-code">lead = sine{decay=0.1, sustain=0} -> gain{value=0.5}</div>
         <div class="output" id="test2-output"></div>
     </div>
 
     <div class="test-section">
         <h2>Test 3: Named line with inline node and reference</h2>
+        <button class="show-graph-btn" onclick="showGraph(3)">Show Graph</button>
         <div class="code" id="test3-code">delay = delay{time=0.33}
 delayedArp = sine{} -> delay</div>
         <div class="output" id="test3-output"></div>
@@ -35,6 +107,7 @@ delayedArp = sine{} -> delay</div>
 
     <div class="test-section">
         <h2>Test 4: Route-only line with references</h2>
+        <button class="show-graph-btn" onclick="showGraph(4)">Show Graph</button>
         <div class="code" id="test4-code">delayedArp = sine{}
 delayedArp -> STEREO</div>
         <div class="output" id="test4-output"></div>
@@ -42,6 +115,7 @@ delayedArp -> STEREO</div>
 
     <div class="test-section">
         <h2>Test 5: Route-only line with inline node</h2>
+        <button class="show-graph-btn" onclick="showGraph(5)">Show Graph</button>
         <div class="code" id="test5-code">delayedArp = sine{}
 delayedArp -> gain{value=0.2} -> STEREO</div>
         <div class="output" id="test5-output"></div>
@@ -49,6 +123,7 @@ delayedArp -> gain{value=0.2} -> STEREO</div>
 
     <div class="test-section">
         <h2>Test 6: Multi-line parameters block</h2>
+        <button class="show-graph-btn" onclick="showGraph(6)">Show Graph</button>
         <div class="code" id="test6-code">pad = sine{
   decay=0.1
   sustain=0
@@ -58,6 +133,7 @@ delayedArp -> gain{value=0.2} -> STEREO</div>
 
     <div class="test-section">
         <h2>Test 7: Multi-line parameters block in routing</h2>
+        <button class="show-graph-btn" onclick="showGraph(7)">Show Graph</button>
         <div class="code" id="test7-code">delayedArp = sine{}
 delayedArp -> reverb{
   roomSize=12
@@ -68,6 +144,7 @@ delayedArp -> reverb{
 
     <div class="test-section">
         <h2>Test 8: Complete example with patterns</h2>
+        <button class="show-graph-btn" onclick="showGraph(8)">Show Graph</button>
         <div class="code" id="test8-code">-- Define effects
 delay = delay{time=0.33}
 reverb = reverb{roomSize=12, tail=3.0}
@@ -89,8 +166,35 @@ pad -> reverb -> gain{value=0.3} -> STEREO
         <div class="output" id="test8-output"></div>
     </div>
 
+    <!-- Modal Dialog for Graph Visualization -->
+    <dialog class="graph-modal" id="graphModal">
+        <div class="modal-header">
+            <h3 class="modal-title" id="modalTitle">Audio Graph Visualization</h3>
+            <button class="close-btn" onclick="closeGraph()">&times;</button>
+        </div>
+        <div class="modal-content">
+            <div class="mermaid-container">
+                <div id="mermaidGraph"></div>
+            </div>
+        </div>
+    </dialog>
+
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.6.1/dist/mermaid.min.js"></script>
     <script src="graph-parser.js"></script>
     <script>
+        // Initialize Mermaid
+        mermaid.initialize({ 
+            startOnLoad: false,
+            theme: 'default',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true
+            }
+        });
+
+        // Store test results for graph visualization
+        const testResults = {};
+
         function runTest(testNum, code) {
             const parser = new GraphParser();
             const result = parser.parse(code);
@@ -139,6 +243,152 @@ pad -> reverb -> gain{value=0.3} -> STEREO
             const outputElement = document.getElementById(`test${testNum}-output`);
             outputElement.textContent = output;
             outputElement.className = result.errors.length > 0 ? 'output error' : 'output success';
+            
+            // Store result for graph visualization
+            testResults[testNum] = result;
+        }
+
+        function showGraph(testNum) {
+            const result = testResults[testNum];
+            if (!result) {
+                alert('No test result available for Test ' + testNum);
+                return;
+            }
+
+            // Generate Mermaid graph syntax
+            const mermaidCode = generateMermaidGraph(result);
+            
+            // Update modal title
+            document.getElementById('modalTitle').textContent = `Test ${testNum}: Audio Graph Visualization`;
+            
+            // Clear previous graph and render new one
+            const graphContainer = document.getElementById('mermaidGraph');
+            graphContainer.innerHTML = '';
+            
+            // Generate unique ID for this graph
+            const graphId = 'graph-' + testNum + '-' + Date.now();
+            
+            mermaid.render(graphId, mermaidCode).then(({svg}) => {
+                graphContainer.innerHTML = svg;
+                document.getElementById('graphModal').showModal();
+            }).catch(error => {
+                console.error('Mermaid rendering error:', error);
+                graphContainer.innerHTML = `<pre style="color: red;">Error rendering graph:\n${error.message}\n\nMermaid code:\n${mermaidCode}</pre>`;
+                document.getElementById('graphModal').showModal();
+            });
+        }
+
+        function closeGraph() {
+            document.getElementById('graphModal').close();
+        }
+
+        function generateMermaidGraph(result) {
+            let mermaid = 'flowchart TD\n';
+            
+            // Create a mapping of anonymous names to readable names
+            const nodeDisplayNames = new Map();
+            let anonCounter = 1;
+            
+            for (const [name, node] of result.nodes) {
+                if (name.startsWith('_anon_')) {
+                    // Create readable name for anonymous nodes
+                    nodeDisplayNames.set(name, `${node.type}${anonCounter}`);
+                    anonCounter++;
+                } else {
+                    // Use original name for named nodes
+                    nodeDisplayNames.set(name, name);
+                }
+            }
+            
+            // Add nodes
+            for (const [name, node] of result.nodes) {
+                const displayName = nodeDisplayNames.get(name);
+                const params = Object.keys(node.parameters).length > 0 
+                    ? '<br/>' + Object.entries(node.parameters)
+                        .map(([k, v]) => `${k}=${v}`)
+                        .join('<br/>')
+                    : '';
+                
+                // Use different shapes for different node types
+                let shape = '';
+                switch (node.type) {
+                    case 'sine':
+                    case 'square':
+                    case 'sawtooth':
+                    case 'triangle':
+                        shape = `${name}["${displayName}${params}"]`;
+                        break;
+                    case 'delay':
+                        shape = `${name}["${displayName}${params}"]`;
+                        break;
+                    case 'reverb':
+                        shape = `${name}["${displayName}${params}"]`;
+                        break;
+                    case 'gain':
+                        shape = `${name}["${displayName}${params}"]`;
+                        break;
+                    case 'lowpass':
+                        shape = `${name}["${displayName}${params}"]`;
+                        break;
+                    case 'sample':
+                        shape = `${name}["${displayName}${params}"]`;
+                        break;
+                    default:
+                        shape = `${name}["${displayName}${params}"]`;
+                }
+                mermaid += `    ${shape}\n`;
+            }
+            
+            // Add STEREO output if referenced
+            let hasStereoOutput = false;
+            for (const conn of result.connections) {
+                if (conn.to === 'STEREO') {
+                    hasStereoOutput = true;
+                    break;
+                }
+            }
+            if (hasStereoOutput) {
+                mermaid += '    STEREO["STEREO OUTPUT"]\n';
+            }
+            
+            // Add connections
+            for (const conn of result.connections) {
+                mermaid += `    ${conn.from} --> ${conn.to}\n`;
+            }
+            
+            // Add patterns section if any
+            if (result.patterns.size > 0) {
+                mermaid += '\n    %% Patterns\n';
+                for (const [name, pattern] of result.patterns) {
+                    const patternId = `pattern_${name}`;
+                    mermaid += `    ${patternId}["@${name}<br/>[${pattern.notes.join(' ')}]<br/>duration: ${pattern.duration}"]\n`;
+                    mermaid += `    ${patternId} -.-> ${name}\n`;
+                }
+            }
+            
+            // Style the nodes
+            mermaid += '\n    %% Styling\n';
+            mermaid += '    classDef instrument fill:#e1f5fe\n';
+            mermaid += '    classDef effect fill:#f3e5f5\n';
+            mermaid += '    classDef output fill:#e8f5e8\n';
+            mermaid += '    classDef pattern fill:#fff3e0\n';
+            
+            // Apply styles
+            for (const [name, node] of result.nodes) {
+                if (['sine', 'square', 'sawtooth', 'triangle', 'sample'].includes(node.type)) {
+                    mermaid += `    class ${name} instrument\n`;
+                } else {
+                    mermaid += `    class ${name} effect\n`;
+                }
+            }
+            if (hasStereoOutput) {
+                mermaid += '    class STEREO output\n';
+            }
+            for (const [name, pattern] of result.patterns) {
+                mermaid += `    class pattern_${name} pattern\n`;
+            }
+            
+            return mermaid;
         }
 
         // Run all tests
