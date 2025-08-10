@@ -16,18 +16,38 @@ class MicroParser {
         const errors = [];
         
         try {
-            // First pass: parse instrument definitions (including multi-line)
-            const instrumentLines = this.parseMultiLineDefinitions(lines);
-            for (const line of instrumentLines) {
-                if (line.includes('=') && !line.startsWith('@')) {
-                    this.parseInstrumentDefinition(line, audioEngine, errors);
+            // First pass: parse named effect definitions
+            for (const line of lines) {
+                if (line.startsWith('effect ') && line.includes('=')) {
+                    this.parseEffectDefinition(line, audioEngine, errors);
                 }
             }
             
-            // Second pass: parse routing lines (parallel routing support)
+            // Second pass: parse instrument definitions (including multi-line)
+            const instrumentLines = this.parseMultiLineDefinitions(lines);
+            for (const line of instrumentLines) {
+                if (line.includes('=') && !line.startsWith('@') && !line.startsWith('effect ')) {
+                    // Check if this is a named effect definition (name = effect(...))
+                    if (this.isNamedEffectDefinition(line)) {
+                        this.parseNamedEffectDefinition(line, audioEngine, errors);
+                    } else {
+                        this.parseInstrumentDefinition(line, audioEngine, errors);
+                    }
+                }
+            }
+            
+            // Third pass: parse routing lines (parallel routing support)
             for (const line of lines) {
-                if (line.includes('->') && !line.includes('=') && !line.startsWith('@')) {
-                    this.parseRoutingLine(line, audioEngine, errors);
+                if (line.includes('->') && !line.startsWith('@')) {
+                    // Check if it's a routing line (not an instrument definition)
+                    const equalIndex = line.indexOf('=');
+                    const arrowIndex = line.indexOf('->');
+                    
+                    // It's a routing line if -> comes before = (or no = at all)
+                    if (equalIndex === -1 || arrowIndex < equalIndex) {
+                        console.log('Parsing routing line:', line);
+                        this.parseRoutingLine(line, audioEngine, errors);
+                    }
                 }
             }
             
@@ -48,34 +68,29 @@ class MicroParser {
         const instrumentLines = [];
         let currentDefinition = '';
         let inMultiLine = false;
-        let parenCount = 0;
         
         for (const line of lines) {
-            if (line.includes('=') && !line.startsWith('@') && !inMultiLine) {
-                // Start of potential multi-line definition
-                currentDefinition = line;
-                parenCount = (line.match(/\(/g) || []).length - (line.match(/\)/g) || []).length;
-                
-                if (parenCount > 0) {
-                    inMultiLine = true;
-                } else {
-                    instrumentLines.push(currentDefinition);
-                    currentDefinition = '';
+            if (line.includes('=') && !line.startsWith('@') && !line.startsWith('effect ')) {
+                if (inMultiLine) {
+                    // Complete the previous definition
+                    instrumentLines.push(currentDefinition.trim());
                 }
+                currentDefinition = line;
+                inMultiLine = true;
+            } else if (inMultiLine && (line.includes('->') || line.trim() === '')) {
+                // End of multi-line definition
+                instrumentLines.push(currentDefinition.trim());
+                currentDefinition = '';
+                inMultiLine = false;
             } else if (inMultiLine) {
                 // Continue multi-line definition
                 currentDefinition += ' ' + line;
-                parenCount += (line.match(/\(/g) || []).length - (line.match(/\)/g) || []).length;
-                
-                if (parenCount <= 0) {
-                    instrumentLines.push(currentDefinition);
-                    currentDefinition = '';
-                    inMultiLine = false;
-                }
-            } else if (!line.includes('=') || line.startsWith('@')) {
-                // Pattern or other line, keep as is
-                instrumentLines.push(line);
             }
+        }
+        
+        // Handle case where file ends with a multi-line definition
+        if (inMultiLine && currentDefinition.trim()) {
+            instrumentLines.push(currentDefinition.trim());
         }
         
         return instrumentLines;
@@ -87,34 +102,99 @@ class MicroParser {
             const parts = line.split('->').map(p => p.trim());
             const instrumentName = parts[0];
             
-            if (!audioEngine.instruments.has(instrumentName)) {
+            // Check if it's an instrument or a named effect
+            if (!audioEngine.instruments.has(instrumentName) && !audioEngine.effects.has(instrumentName)) {
                 errors.push(`Unknown instrument in routing: ${instrumentName}`);
                 return;
             }
             
-            const instrument = audioEngine.instruments.get(instrumentName);
+            // Handle routing from instruments
+            if (audioEngine.instruments.has(instrumentName)) {
+                const instrument = audioEngine.instruments.get(instrumentName);
+                this.processInstrumentRouting(instrument, parts.slice(1), audioEngine, errors);
+            }
             
-            // Start a new effect chain for parallel routing
-            instrument.addEffectChain();
-            
-            // Parse and add effects to the new chain
-            for (let i = 1; i < parts.length; i++) {
-                const effectStr = parts[i];
-                const effect = this.parseEffect(effectStr);
-                if (effect) {
-                    if (effect.type === 'delay') {
-                        instrument.delay(effect.time);
-                    } else if (effect.type === 'lowpass') {
-                        instrument.lowpass(effect.cutoff);
-                    } else if (effect.type === 'gain') {
-                        instrument.gain(effect.level);
-                    } else if (effect.type === 'stereo') {
-                        instrument.stereo();
-                    }
-                }
+            // Handle routing from named effects (feedback loops)
+            if (audioEngine.effects.has(instrumentName)) {
+                this.processEffectRouting(instrumentName, parts.slice(1), audioEngine, errors);
+                return;
             }
         } catch (error) {
-            errors.push(`Error parsing routing "${line}": ${error.message}`);
+            errors.push(`Error parsing routing line '${line}': ${error.message}`);
+        }
+    }
+
+    processInstrumentRouting(instrument, effectParts, audioEngine, errors) {
+        console.log('Processing instrument routing:', effectParts);
+        // Start a new effect chain for parallel routing
+        instrument.addEffectChain();
+        
+        // Parse and add effects to the new chain
+        for (let i = 0; i < effectParts.length; i++) {
+            const effectStr = effectParts[i];
+            console.log('Processing effect:', effectStr);
+            const effect = this.parseEffect(effectStr);
+            console.log('Parsed effect:', effect);
+            if (effect) {
+                if (effect.type === 'delay') {
+                    instrument.delay(effect.time);
+                } else if (effect.type === 'lowpass') {
+                    instrument.lowpass(effect.cutoff);
+                } else if (effect.type === 'gain') {
+                    instrument.gain(effect.level);
+                } else if (effect.type === 'stereo') {
+                    instrument.stereo();
+                } else if (effect.type === 'namedEffect') {
+                    instrument.routeToEffect(effect.name);
+                }
+            } else if (effectStr.match(/^[a-zA-Z_][a-zA-Z0-9_]*$/)) {
+                // Handle named effect reference
+                instrument.routeToEffect(effectStr);
+            }
+        }
+    }
+
+    processEffectRouting(effectName, effectParts, audioEngine, errors) {
+        // Handle routing from named effects (for feedback loops)
+        const sourceEffect = audioEngine.effects.get(effectName);
+        if (!sourceEffect) return;
+        
+        for (let i = 0; i < effectParts.length; i++) {
+            const effectStr = effectParts[i];
+            if (audioEngine.effects.has(effectStr)) {
+                // Route to another named effect
+                sourceEffect.routeTo(effectStr, audioEngine);
+            }
+        }
+    }
+
+    isNamedEffectDefinition(line) {
+        // Check if line is a named effect definition: name = effect(...)
+        const equalIndex = line.indexOf('=');
+        if (equalIndex === -1) return false;
+        
+        const definition = line.substring(equalIndex + 1).trim();
+        
+        // Check if the right side is a single effect call
+        return definition.match(/^(delay|lowpass|gain)\s*\([^)]*\)$/) !== null;
+    }
+
+    parseNamedEffectDefinition(line, audioEngine, errors) {
+        try {
+            const equalIndex = line.indexOf('=');
+            const name = line.substring(0, equalIndex).trim();
+            const definition = line.substring(equalIndex + 1).trim();
+            
+            const effect = this.parseEffect(definition);
+            if (effect) {
+                // Create the named effect in the audio engine
+                audioEngine.createEffect(name, effect.type, effect);
+                console.log(`Created named effect: ${name}`);
+            } else {
+                errors.push(`Failed to parse named effect: ${definition}`);
+            }
+        } catch (error) {
+            errors.push(`Error parsing named effect definition '${line}': ${error.message}`);
         }
     }
 
@@ -131,15 +211,39 @@ class MicroParser {
         
         switch (effectType) {
             case 'delay':
-                const time = parseFloat(params) || 0.25;
+                let time = 0.25;
+                if (params.includes('time=')) {
+                    const timeMatch = params.match(/time=([^,)]+)/);
+                    if (timeMatch) {
+                        time = parseFloat(timeMatch[1]) || 0.25;
+                    }
+                } else {
+                    time = parseFloat(params) || 0.25;
+                }
                 return { type: 'delay', time };
                 
             case 'lowpass':
-                const cutoff = parseFloat(params) || 1000;
+                let cutoff = 1000;
+                if (params.includes('cutoff=')) {
+                    const cutoffMatch = params.match(/cutoff=([^,)]+)/);
+                    if (cutoffMatch) {
+                        cutoff = parseFloat(cutoffMatch[1]) || 1000;
+                    }
+                } else {
+                    cutoff = parseFloat(params) || 1000;
+                }
                 return { type: 'lowpass', cutoff };
                 
             case 'gain':
-                const level = parseFloat(params);
+                let level = 1.0;
+                if (params.includes('level=')) {
+                    const levelMatch = params.match(/level=([^,)]+)/);
+                    if (levelMatch) {
+                        level = parseFloat(levelMatch[1]);
+                    }
+                } else {
+                    level = parseFloat(params);
+                }
                 return { type: 'gain', level: isFinite(level) ? level : 1.0 };
                 
             default:
@@ -322,6 +426,27 @@ class MicroParser {
         return args;
     }
 
+    parseEffect(effectDef) {
+        // Parse individual effect definition for named effects
+        if (effectDef.startsWith('delay(')) {
+            const timeMatch = effectDef.match(/delay\((?:time=)?([^)]+)\)/);
+            if (timeMatch) {
+                return { type: 'delay', time: parseFloat(timeMatch[1]) };
+            }
+        } else if (effectDef.startsWith('lowpass(')) {
+            const cutoffMatch = effectDef.match(/lowpass\((?:cutoff=)?([^)]+)\)/);
+            if (cutoffMatch) {
+                return { type: 'lowpass', cutoff: parseFloat(cutoffMatch[1]) };
+            }
+        } else if (effectDef.startsWith('gain(')) {
+            const levelMatch = effectDef.match(/gain\((?:level=)?([^)]+)\)/);
+            if (levelMatch) {
+                return { type: 'gain', level: parseFloat(levelMatch[1]) };
+            }
+        }
+        return null;
+    }
+
     parseOptions(definition) {
         const options = {};
         const optionsMatch = definition.match(/\(([^)]*)\)/);
@@ -367,6 +492,9 @@ class MicroParser {
                     }
                 } else if (call.trim() === 'STEREO') {
                     effects.push({ type: 'stereo' });
+                } else if (call.match(/^[a-zA-Z_][a-zA-Z0-9_]*$/)) {
+                    // Named effect reference (just a name without parentheses)
+                    effects.push({ type: 'namedEffect', name: call.trim() });
                 }
             });
         }

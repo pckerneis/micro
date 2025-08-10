@@ -4,6 +4,7 @@ class AudioEngine {
         this.masterGain = null;
         this.instruments = new Map();
         this.patterns = new Map();
+        this.effects = new Map(); // Named effects storage
         this.isPlaying = false;
         this.startTime = 0;
         this.bpm = 120;
@@ -31,11 +32,17 @@ class AudioEngine {
     }
 
     createSample(url, options = {}) {
-        return new SampleInstrument(this.audioContext, this.masterGain, url, options);
+        return new SampleInstrument(this.audioContext, this.masterGain, url, options, this);
     }
 
     createOscillator(type, options = {}) {
-        return new OscillatorInstrument(this.audioContext, this.masterGain, type, options);
+        return new OscillatorInstrument(this.audioContext, this.masterGain, type, options, this);
+    }
+
+    createEffect(name, effectType, params = {}) {
+        const effect = new EffectModule(this.audioContext, effectType, params);
+        this.effects.set(name, effect);
+        return effect;
     }
 
     addPattern(name, notes, duration) {
@@ -119,8 +126,83 @@ class AudioEngine {
     }
 }
 
+class EffectModule {
+    constructor(audioContext, effectType, params = {}) {
+        this.audioContext = audioContext;
+        this.effectType = effectType;
+        this.params = params;
+        this.inputNode = null;
+        this.outputNode = null;
+        this.effectChains = []; // Support for routing to other effects
+        this.createEffectNodes();
+    }
+
+    createEffectNodes() {
+        if (this.effectType === 'delay') {
+            const delay = this.audioContext.createDelay();
+            const feedback = this.audioContext.createGain();
+            const wetGain = this.audioContext.createGain();
+            
+            const delayTime = isFinite(this.params.time) && this.params.time > 0 ? this.params.time : 0.25;
+            delay.delayTime.value = Math.min(delayTime, 1.0);
+            feedback.gain.value = 0.3;
+            wetGain.gain.value = 0.3;
+            
+            // Create feedback loop
+            delay.connect(feedback);
+            feedback.connect(delay);
+            delay.connect(wetGain);
+            
+            this.inputNode = delay;
+            this.outputNode = wetGain;
+            
+        } else if (this.effectType === 'lowpass') {
+            const filter = this.audioContext.createBiquadFilter();
+            filter.type = 'lowpass';
+            
+            const cutoff = isFinite(this.params.cutoff) && this.params.cutoff > 0 ? this.params.cutoff : 1000;
+            filter.frequency.value = Math.min(cutoff, this.audioContext.sampleRate / 2);
+            filter.Q.value = 1;
+            
+            this.inputNode = filter;
+            this.outputNode = filter;
+            
+        } else if (this.effectType === 'gain') {
+            const gainNode = this.audioContext.createGain();
+            const level = isFinite(this.params.level) && this.params.level >= 0 ? this.params.level : 1.0;
+            gainNode.gain.value = level;
+            
+            this.inputNode = gainNode;
+            this.outputNode = gainNode;
+        }
+    }
+
+    connectTo(target) {
+        if (target instanceof EffectModule) {
+            this.outputNode.connect(target.inputNode);
+        } else {
+            // Assume it's an audio destination
+            this.outputNode.connect(target);
+        }
+        return this;
+    }
+
+    addEffectChain() {
+        this.effectChains.push([]);
+        return this;
+    }
+
+    routeTo(effectName, audioEngine) {
+        if (audioEngine.effects.has(effectName)) {
+            const targetEffect = audioEngine.effects.get(effectName);
+            this.outputNode.connect(targetEffect.inputNode);
+        }
+        return this;
+    }
+}
+
 class SampleInstrument {
-    constructor(audioContext, destination, url, options = {}) {
+    constructor(audioContext, destination, url, options = {}, audioEngine = null) {
         this.audioContext = audioContext;
         this.destination = destination;
         this.url = url;
@@ -128,6 +210,7 @@ class SampleInstrument {
         this.effectChains = []; // Array of effect chains for parallel routing
         this.hasExplicitRouting = false;
         this.gain = options.gain !== undefined ? options.gain : 1.0;
+        this.audioEngine = audioEngine; // Reference to access named effects
         this.loadSample();
     }
 
@@ -198,6 +281,17 @@ class SampleInstrument {
 
     gain(level) {
         return this.addEffect({ type: 'gain', level });
+    }
+
+    routeToEffect(effectName) {
+        // Add a named effect reference to the current chain
+        if (this.effectChains.length === 0) {
+            this.effectChains.push([]);
+        }
+        const currentChain = this.effectChains[this.effectChains.length - 1];
+        currentChain.push({ type: 'namedEffect', name: effectName });
+        this.hasExplicitRouting = true;
+        return this;
     }
 
     stereo() {
@@ -277,7 +371,7 @@ class SampleInstrument {
 }
 
 class OscillatorInstrument {
-    constructor(audioContext, destination, type, options = {}) {
+    constructor(audioContext, destination, type, options = {}, audioEngine = null) {
         this.audioContext = audioContext;
         this.destination = destination;
         this.type = type;
@@ -290,6 +384,7 @@ class OscillatorInstrument {
         };
         this.effectChains = []; // Array of effect chains for parallel routing
         this.hasExplicitRouting = false; // Track if instrument has explicit routing
+        this.audioEngine = audioEngine; // Reference to access named effects
     }
 
     addEffect(effect) {
@@ -320,6 +415,17 @@ class OscillatorInstrument {
 
     gain(level) {
         return this.addEffect({ type: 'gain', level });
+    }
+
+    routeToEffect(effectName) {
+        // Add a named effect reference to the current chain
+        if (this.effectChains.length === 0) {
+            this.effectChains.push([]);
+        }
+        const currentChain = this.effectChains[this.effectChains.length - 1];
+        currentChain.push({ type: 'namedEffect', name: effectName });
+        this.hasExplicitRouting = true;
+        return this;
     }
 
     stereo() {
@@ -377,8 +483,10 @@ class OscillatorInstrument {
         
         // If no explicit routing, connect directly to output
         if (this.effectChains.length === 0) {
+            console.log('No effect chains, connecting directly to output');
             gainNode.connect(this.destination);
         } else {
+            console.log(`Processing ${this.effectChains.length} effect chains:`, this.effectChains);
             // Process each parallel effect chain
             this.effectChains.forEach(chain => {
                 // Create a separate gain node for this chain to split the signal

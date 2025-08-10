@@ -44,17 +44,40 @@ Micro supports effects chains using the `->` operator and parallel routing:
 kick = sample('kick.wav') -> delay(0.5)
 lead = sine() -> lowpass(cutoff=800) -> delay(0.25)
 
-// Parallel routing - multiple effect chains from one instrument
-lead = sine()
-lead -> gain(0.7)                    // Dry signal at 70% volume
-lead -> delay(0.75) -> gain(0.2)     // Wet delay at 20% volume
+//## Parallel Routing and Gain Control
 
-// Multi-line sample with effects
-snare = sample(
-    url='snare.wav',
-    gain=1.2
-) -> lowpass(cutoff=1200)
+You can create multiple effect chains per instrument for complex routing:
+
 ```
+lead = square()
+lead -> delay(0.75) -> gain(0.2)
+lead -> gain(0.7)
+```
+
+This creates two parallel paths: one with delay and low gain, another with just higher gain. Only the last effect in each chain connects to the output.
+
+## Named Effects and Modular Routing
+
+Create reusable effect modules that can be shared between instruments:
+
+```
+-- Define named effects
+effect myDelay = delay(time=0.5)
+effect myFilter = lowpass(cutoff=800)
+
+-- Use named effects in routing
+lead = square()
+lead -> myDelay -> myFilter
+
+bass = sine()
+bass -> myFilter -> gain(0.8)
+```
+
+Named effects enable:
+- **Reusable effect modules**: Define once, use multiple times
+- **Modular routing**: Build complex effect graphs
+- **Feedback connections**: Route effects back to themselves or other effects
+- **Consistent processing**: Same effect settings across multiple instruments
 
 ### Available Effects
 
