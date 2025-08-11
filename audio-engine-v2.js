@@ -16,11 +16,15 @@ class AudioEngineV2 {
         this.pausedTime = 0;
         this.bpm = 120;
         this.stepDuration = 60 / this.bpm; // Duration of one step in seconds
-        // Scheduler grid uses the smallest pattern step duration for accurate sub-steps
-        this.gridStepDuration = this.stepDuration;
+        // Transport timing (integer tick scheduler)
+        this.ppq = 96; // pulses per quarter note
+        this.tickSec = 60 / this.bpm / this.ppq; // seconds per tick
+        this.currentTick = 0; // transport tick position during scheduling
+        this.lookaheadSec = 0.15; // schedule 150ms ahead
+        this.intervalMs = 25; // scheduler wakeup period
         this.schedulerInterval = null;
-        this.nextStepTime = 0;
-        this.currentStep = 0;
+        this.nextStepTime = 0; // deprecated (kept for compatibility)
+        this.currentStep = 0;  // deprecated (kept for compatibility)
     }
 
     /**
@@ -87,33 +91,27 @@ class AudioEngineV2 {
         // (route or alias) so we can use builder.getSourceNodeForRoute()
         for (const [, patternData] of patterns) {
             const key = patternData.name; // original target in user code (route or alias)
-            this.patterns.set(key, {
+            const stepTicks = Math.max(1, Math.round((patternData.duration || 1) * this.ppq));
+            const loopTicks = stepTicks * (patternData.notes?.length || 1);
+            const pattern = {
                 notes: patternData.notes,
-                duration: patternData.duration,
+                duration: patternData.duration, // in beats
                 targetName: key,
                 resolvedName: patternData.resolvedName,
-                currentStep: 0,
-                lastTriggeredStep: -1
-            });
+                stepTicks,
+                loopTicks,
+                nextTick: 0
+            };
+            // If we're already playing, align nextTick to the next step boundary
+            if (this.isPlaying) {
+                const ct = Math.max(0, this.currentTick);
+                pattern.nextTick = Math.ceil(ct / stepTicks) * stepTicks;
+            }
+            this.patterns.set(key, pattern);
         }
 
         // Recalculate scheduling grid based on current patterns
-        this.updateGridStep();
-    }
-
-    /**
-     * Update the scheduler grid step to the smallest pattern step duration
-     */
-    updateGridStep() {
-        // Default to quarter note
-        let minStep = this.stepDuration;
-        for (const pattern of this.patterns.values()) {
-            const patternStep = this.stepDuration * (pattern.duration || 1);
-            if (patternStep > 0 && patternStep < minStep) {
-                minStep = patternStep;
-            }
-        }
-        this.gridStepDuration = minStep;
+        // this.updateGridStep(); // removed
     }
 
     /**
@@ -136,29 +134,22 @@ class AudioEngineV2 {
         }
 
         this.isPlaying = true;
-        this.startTime = this.audioContext.currentTime - this.pausedTime;
-        // Schedule slightly in the future and align to grid to avoid index lock
-        const now = this.audioContext.currentTime;
-        const offset = 0.1;
-        const rel = (now + offset) - this.startTime;
-        const stepsAhead = Math.ceil(rel / this.gridStepDuration);
-        this.nextStepTime = this.startTime + stepsAhead * this.gridStepDuration;
-        console.log('[Engine] gridStepDuration=', this.gridStepDuration.toFixed(4), 'pattern step base=', this.stepDuration.toFixed(4));
-        this.currentStep = 0;
-        
+        // Start slightly in the future to avoid scheduling-in-the-past
+        this.startTime = this.audioContext.currentTime + 0.1;
+        this.currentTick = 0;
+ 
         // Reset all pattern positions
         for (const pattern of this.patterns.values()) {
-            pattern.currentStep = 0;
-            pattern.lastTriggeredStep = -1;
+            pattern.nextTick = 0;
         }
-
+ 
         // Schedule the first step immediately to avoid delay
-        this.scheduleNotes();
-
+        this.scheduleLoop();
+ 
         // Start scheduler
         this.schedulerInterval = setInterval(() => {
-            this.scheduleNotes();
-        }, 25); // Check every 25ms for precise timing
+            this.scheduleLoop();
+        }, this.intervalMs); // Check periodically for precise timing
 
         console.log('Playback started');
     }
@@ -226,47 +217,33 @@ class AudioEngineV2 {
     /**
      * Schedule notes for patterns
      */
-    scheduleNotes() {
+    scheduleLoop() {
         if (!this.isPlaying) return;
 
-        const currentTime = this.audioContext.currentTime;
-        const lookAhead = 0.15; // Look ahead 150ms for robustness
+        const now = this.audioContext.currentTime;
+        const horizonTick = Math.floor((now + this.lookaheadSec - this.startTime) / this.tickSec);
 
-        // Schedule notes that should play within the look-ahead window
-        while (this.nextStepTime < currentTime + lookAhead) {
+        while (this.currentTick <= horizonTick) {
             for (const [routeKey, pattern] of this.patterns) {
-                this.schedulePatternStep(routeKey, pattern, this.nextStepTime);
+                if (this.currentTick === pattern.nextTick) {
+                    const notesLen = pattern.notes.length || 1;
+                    const stepIndex = Math.floor((pattern.nextTick / pattern.stepTicks) % notesLen);
+                    const note = pattern.notes[stepIndex];
+                    if (note !== null && note !== '_') {
+                        let timeSec = this.startTime + pattern.nextTick * this.tickSec;
+                        // Clamp to a tiny bit in the future to avoid past-start edge cases
+                        timeSec = Math.max(timeSec, now + 0.005);
+                        const durSec = Math.max(0.01, pattern.stepTicks * this.tickSec);
+                        this.playNote(routeKey, note, durSec, timeSec);
+                    }
+                    pattern.nextTick += pattern.stepTicks;
+                }
             }
-
-            // Advance by smallest pattern step to support fractional durations
-            this.nextStepTime += this.gridStepDuration;
-            this.currentStep++;
+            this.currentTick += 1;
         }
     }
 
-    /**
-     * Schedule a single step for a pattern
-     */
-    schedulePatternStep(patternName, pattern, stepTime) {
-        // Calculate which note should play based on engine-relative time
-        const patternStepDuration = this.stepDuration * pattern.duration;
-        const engineTime = Math.max(0, stepTime - this.startTime);
-        const totalSteps = Math.floor(engineTime / patternStepDuration);
-        const stepIndex = totalSteps % pattern.notes.length;
-        
-        // Only trigger if we haven't already triggered this step
-        if (totalSteps !== pattern.lastTriggeredStep) {
-            const note = pattern.notes[stepIndex];
-
-            console.log({note})
-            
-            if (note !== null && note !== '_') {
-                this.playNote(patternName, note, patternStepDuration, stepTime);
-            }
-            
-            pattern.lastTriggeredStep = totalSteps;
-        }
-    }
+    // schedulePatternStep removed in favor of integer-tick scheduleLoop
 
     /**
      * Play a note on a specific route/instrument
@@ -304,7 +281,7 @@ class AudioEngineV2 {
     setBPM(bpm) {
         this.bpm = Math.max(60, Math.min(200, bpm));
         this.stepDuration = 60 / this.bpm;
-        this.updateGridStep();
+        this.tickSec = 60 / this.bpm / this.ppq;
     }
 
     /**
