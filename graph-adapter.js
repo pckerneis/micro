@@ -68,27 +68,57 @@ class GraphAdapter {
             }
         }
         
-        // Build complete chains for each instrument
+        // Build all parallel chains for each instrument
         for (const instrumentName of instrumentNodes) {
-            const chain = this.buildCompleteChain(instrumentName, connections);
-            if (chain.length > 0) {
-                instrumentChains.set(instrumentName, chain);
+            const chains = this.buildAllChainsFromInstrument(instrumentName, connections);
+            if (chains.length > 0) {
+                instrumentChains.set(instrumentName, chains);
             }
         }
 
         // Apply routing chains to instruments
-        for (const [instrumentName, chain] of instrumentChains) {
-            this.applyRoutingChain(instrumentName, chain);
+        for (const [instrumentName, chains] of instrumentChains) {
+            this.applyRoutingChains(instrumentName, chains);
         }
     }
     
     /**
-     * Build complete effect chain starting from an instrument
+     * Build all parallel effect chains starting from an instrument
      */
-    buildCompleteChain(startNode, connections) {
+    buildAllChainsFromInstrument(startNode, connections) {
+        const chains = [];
+        
+        // Find all direct connections from the instrument
+        const directConnections = connections.filter(conn => conn.from === startNode);
+        
+        if (directConnections.length === 0) {
+            return chains;
+        }
+        
+        // Build a complete chain for each direct connection
+        for (const connection of directConnections) {
+            const chain = this.buildSingleChain(connection.to, connections);
+            chains.push(chain);
+        }
+        
+        return chains;
+    }
+    
+    /**
+     * Build a single effect chain starting from a given node
+     */
+    buildSingleChain(startNode, connections) {
         const chain = [];
         let currentNode = startNode;
         const visited = new Set();
+        
+        // If we start with STEREO, return empty chain (direct to output)
+        if (currentNode === 'STEREO') {
+            return chain;
+        }
+        
+        // Add the starting node to the chain
+        chain.push(currentNode);
         
         while (true) {
             // Prevent infinite loops
@@ -157,44 +187,50 @@ class GraphAdapter {
 
     /**
      * Apply a routing chain to an instrument
-     * Converts graph connections into effect chains
+     * Converts graph connections into multiple effect chains
      */
-    applyRoutingChain(instrumentName, targetChain) {
+    applyRoutingChains(instrumentName, targetChains) {
         if (!this.audioEngine.instruments.has(instrumentName)) {
             console.warn(`Instrument ${instrumentName} not found for routing`);
             return;
         }
 
-        // Convert connection chain to effect chain format
-        const effectChain = [];
+        // Convert each connection chain to effect chain format
+        const effectChains = [];
 
-        for (const target of targetChain) {
-            if (target === 'STEREO') {
-                // End of chain - connects to output
-                break;
-            }
+        for (const targetChain of targetChains) {
+            const effectChain = [];
 
-            // Check if target is a named effect
-            if (this.audioEngine.namedEffects.has(target)) {
-                effectChain.push({
-                    type: 'named',
-                    name: target
-                });
-            } else {
-                // Target should be an inline effect node
-                const targetNode = this.findNodeByName(target);
-                if (targetNode) {
+            for (const target of targetChain) {
+                if (target === 'STEREO') {
+                    // End of chain - connects to output
+                    break;
+                }
+
+                // Check if target is a named effect
+                if (this.audioEngine.namedEffects.has(target)) {
                     effectChain.push({
-                        type: targetNode.type,
-                        ...targetNode.parameters
+                        type: 'named',
+                        name: target
                     });
+                } else {
+                    // Target should be an inline effect node
+                    const targetNode = this.findNodeByName(target);
+                    if (targetNode) {
+                        effectChain.push({
+                            type: targetNode.type,
+                            ...targetNode.parameters
+                        });
+                    }
                 }
             }
+
+            effectChains.push(effectChain);
         }
 
-        // Apply the effect chain to the instrument
-        if (effectChain.length > 0) {
-            this.audioEngine.setInstrumentEffectChain(instrumentName, effectChain);
+        // Apply all effect chains to the instrument
+        if (effectChains.length > 0) {
+            this.audioEngine.setInstrumentEffectChains(instrumentName, effectChains);
         }
     }
 

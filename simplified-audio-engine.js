@@ -108,6 +108,18 @@ class SimplifiedAudioEngine {
     }
 
     /**
+     * Set multiple effect chains for an instrument (for parallel routing)
+     * @param {string} instrumentName - Name of the instrument
+     * @param {Array<Array>} effectChains - Array of effect chain arrays
+     */
+    setInstrumentEffectChains(instrumentName, effectChains) {
+        const instrument = this.instruments.get(instrumentName);
+        if (instrument) {
+            instrument.setEffectChains(effectChains);
+        }
+    }
+
+    /**
      * Create a named effect for reuse
      * @param {string} name - Effect name
      * @param {string} type - Effect type
