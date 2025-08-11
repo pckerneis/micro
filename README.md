@@ -19,9 +19,9 @@ Features:
 ### Routing Examples
 
 ```
-pad = square()                    -- Source connected to output (default)
-filtered = square() -> lowpass(220)  -- Source bypassed, lowpass filter connected to output
-chained = square() -> delay(0.25) -> lowpass(220)  -- Source bypassed, lowpass filter connected to output
+pad = square()                    # Source connected to output (default)
+filtered = square() -> lowpass(220)  # Source bypassed, lowpass filter connected to output
+chained = square() -> delay(0.25) -> lowpass(220)  # Source bypassed, lowpass filter connected to output
 ```
 
 ## Instrument Types
@@ -61,11 +61,11 @@ This creates two parallel paths: one with delay and low gain, another with just 
 Create reusable effect modules that can be shared between instruments:
 
 ```
--- Define named effects
+# Define named effects
 effect myDelay = delay(time=0.5)
 effect myFilter = lowpass(cutoff=800)
 
--- Use named effects in routing
+# Use named effects in routing
 lead = square()
 lead -> myDelay -> myFilter
 
@@ -95,13 +95,13 @@ Named effects enable:
 ## Sample Syntax Examples
 
 ```
--- Simple URL syntax
+# Simple URL syntax
 kick = sample('https://cdn.freesound.org/previews/584/584792_11532701-lq.mp3')
 
--- Named arguments with gain
+# Named arguments with gain
 snare = sample(url='https://cdn.freesound.org/previews/13/13751_32468-lq.mp3', gain=1.5)
 
--- Multi-line definition
+# Multi-line definition
 kick = sample(
   url='https://cdn.freesound.org/previews/584/584792_11532701-lq.mp3'
   gain=1.5
@@ -111,17 +111,17 @@ kick = sample(
 ## Example Program
 
 ```
--- this is a comment line
+# this is a comment line
 kick = sample(
   url='https://cdn.freesound.org/previews/584/584792_11532701-lq.mp3'
   gain=1.2
 )
 snare = sample('https://cdn.freesound.org/previews/13/13751_32468-lq.mp3')
-pad = square() -> lowpass(cutoff=220) -- filtered pad (lowpass connected to output)
-bass = square(sustain=0 decay=0.2) -- you can provide options such as envelope parameters
-lead = sine() -> delay(0.75) -> lowpass(800) -- chained effects (lowpass connected to output)
+pad = square() -> lowpass(cutoff=220) # filtered pad (lowpass connected to output)
+bass = square(sustain=0 decay=0.2) # you can provide options such as envelope parameters
+lead = sine() -> delay(0.75) -> lowpass(800) # chained effects (lowpass connected to output)
 
-@kick [30] 1 -- kick plays note 30 every 1 beat
-@pad [(70 77)] 2 -- use parenthesis for chords
-@lead [70 77 74 76 72 81] 1/8 -- lead plays a note sequence with a step duration of 1/8
-@snare [_ 46] -- "_" means silence
+@kick [30] 1 # kick plays note 30 every 1 beat
+@pad [(70 77)] 2 # use parenthesis for chords
+@lead [70 77 74 76 72 81] 1/8 # lead plays a note sequence with a step duration of 1/8
+@snare [_ 46] # "_" means silence

@@ -145,22 +145,22 @@ delayedArp -> reverb{
     <div class="test-section">
         <h2>Test 8: Complete example with patterns</h2>
         <button class="show-graph-btn" onclick="showGraph(8)">Show Graph</button>
-        <div class="code" id="test8-code">-- Define effects
+        <div class="code" id="test8-code"># Define effects
 delay = delay{time=0.33}
 reverb = reverb{roomSize=12, tail=3.0}
 
--- Define instruments
+# Define instruments
 lead = sine{decay=0.1, sustain=0} -> gain{value=0.5}
 pad = sine{
   decay=0.1
   sustain=0
 }
 
--- Routing
+# Routing
 lead -> delay -> MASTER
 pad -> reverb -> gain{value=0.3} -> MASTER
 
--- Patterns
+# Patterns
 @lead [70 _ 74 _] 0.25
 @pad [60 64 67] 2.0</div>
         <div class="output" id="test8-output"></div>

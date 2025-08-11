@@ -53,8 +53,8 @@ class GraphParser {
     preprocessLines(code) {
         const rawLines = code.split('\n')
             .map(line => {
-                // Remove inline comments (everything after --)
-                const commentIndex = line.indexOf('--');
+                // Remove inline comments (everything after #)
+                const commentIndex = line.indexOf('#');
                 if (commentIndex !== -1) {
                     line = line.substring(0, commentIndex);
                 }

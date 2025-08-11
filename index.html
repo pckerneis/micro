@@ -28,24 +28,24 @@
         
         <main>
             <div class="editor-container">
-                <textarea id="editor">-- Welcome to Micro!
--- This is a minimalistic livecoding environment for music
+                <textarea id="editor"># Welcome to Micro!
+# This is a minimalistic livecoding environment for music
 
--- Define instruments with new curly-brace syntax
+# Define instruments with new curly-brace syntax
 kick = sample{url='./samples/kick.wav'}
 snare = sample{url='./samples/snare.wav'}
 pad = square{decay=0.3, sustain=0.7}
 bass = square{sustain=0, decay=0.2}
 lead = sine{decay=0.1} -> delay{time=0.75}
 
--- Routing
+# Routing
 kick -> MASTER
 snare -> MASTER
 pad -> gain{value=0.6} -> MASTER
 bass -> MASTER
 lead -> MASTER
 
--- Create patterns
+# Create patterns
 @kick [30] 1
 @pad [(70 77)] 2
 @lead [70 77 74 76 72 81] 1/8
