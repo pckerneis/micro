@@ -434,11 +434,18 @@ class AudioGraphBuilderV2 {
         const envelope = this.audioContext.createGain();
         const params = instrumentNode._instrumentParams;
 
-        // ADSR envelope
-        envelope.gain.setValueAtTime(0, startTime);
-        envelope.gain.linearRampToValueAtTime(1, startTime + params.attack);
-        envelope.gain.linearRampToValueAtTime(params.sustain, startTime + params.attack + params.decay);
-        envelope.gain.setValueAtTime(params.sustain, Math.max(0, endTime - params.release));
+        // ADSR envelope with safe pre-zero and minimum attack to avoid burst
+        const eps = 0.001;
+        const attack = Math.max(0.005, params.attack ?? 0.01);
+        const decay = Math.max(0, params.decay ?? 0.3);
+        const sustain = params.sustain ?? 0.7;
+        const release = Math.max(0, params.release ?? 0.5);
+        const t0 = startTime - eps;
+        envelope.gain.cancelScheduledValues(t0);
+        envelope.gain.setValueAtTime(0, t0);
+        envelope.gain.linearRampToValueAtTime(1, startTime + attack);
+        envelope.gain.linearRampToValueAtTime(sustain, startTime + attack + decay);
+        envelope.gain.setValueAtTime(sustain, Math.max(0, endTime - release));
         envelope.gain.linearRampToValueAtTime(0, endTime);
 
         // Connect: oscillator -> envelope -> instrument node
@@ -486,9 +493,14 @@ class AudioGraphBuilderV2 {
         const now = this.audioContext.currentTime;
         startTime = Math.max(startTime, now + 0.005);
 
-        // Create envelope for sample
+        // Create envelope for sample with short fade-in to avoid burst/click
         const envelope = this.audioContext.createGain();
-        envelope.gain.setValueAtTime(1, startTime);
+        const eps = 0.001;
+        const fadeIn = 0.005; // 5ms fade-in
+        const t0 = startTime - eps;
+        envelope.gain.cancelScheduledValues(t0);
+        envelope.gain.setValueAtTime(0, t0);
+        envelope.gain.linearRampToValueAtTime(1, startTime + fadeIn);
 
         // Simple fade out if duration is shorter than sample
         const sampleDuration = sampleNode._buffer.duration / (bufferSource.playbackRate.value || 1);
