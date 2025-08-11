@@ -188,14 +188,51 @@ class AudioGraphBuilderV2 {
     }
 
     /**
-     * Create sample node (placeholder - would need actual sample loading)
+     * Create sample node with buffer loading
      */
     createSampleNode(parameters) {
-        // For now, create a gain node as placeholder
         const sampleGain = this.audioContext.createGain();
         sampleGain.gain.value = parameters.gain ?? 1.0;
+        sampleGain._instrumentType = 'sample';
         sampleGain._sampleUrl = parameters.url;
+        sampleGain._buffer = null;
+        sampleGain._isLoading = false;
+        
+        // Load the audio buffer if URL is provided
+        if (parameters.url) {
+            this.loadSampleBuffer(sampleGain, parameters.url);
+        }
+        
         return sampleGain;
+    }
+
+    /**
+     * Load audio buffer for sample node
+     */
+    async loadSampleBuffer(sampleNode, url) {
+        if (sampleNode._isLoading) return;
+        
+        sampleNode._isLoading = true;
+        
+        try {
+            console.log(`Loading sample: ${url}`);
+            const response = await fetch(url);
+            
+            if (!response.ok) {
+                throw new Error(`Failed to load sample: ${response.status} ${response.statusText}`);
+            }
+            
+            const arrayBuffer = await response.arrayBuffer();
+            const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+            
+            sampleNode._buffer = audioBuffer;
+            sampleNode._isLoading = false;
+            
+            console.log(`Sample loaded successfully: ${url} (${audioBuffer.duration.toFixed(2)}s)`);
+        } catch (error) {
+            console.error(`Failed to load sample ${url}:`, error);
+            sampleNode._isLoading = false;
+        }
     }
 
     /**
@@ -290,11 +327,18 @@ class AudioGraphBuilderV2 {
      */
     playNote(instrumentNode, frequency, duration = 1.0, time = 0) {
         if (!instrumentNode._instrumentType) {
-            console.warn('Trying to play note on non-instrument node');
+            console.warn('Trying to play note on non-instrument node', instrumentNode);
             return;
         }
 
         const startTime = this.audioContext.currentTime + time;
+
+        // Handle sample playback
+        if (instrumentNode._instrumentType === 'sample') {
+            return this.playSample(instrumentNode, frequency, duration, startTime);
+        }
+
+        // Handle oscillator playback
         const endTime = startTime + duration;
 
         // Create oscillator for this note
@@ -310,7 +354,7 @@ class AudioGraphBuilderV2 {
         envelope.gain.setValueAtTime(0, startTime);
         envelope.gain.linearRampToValueAtTime(1, startTime + params.attack);
         envelope.gain.linearRampToValueAtTime(params.sustain, startTime + params.attack + params.decay);
-        envelope.gain.setValueAtTime(params.sustain, endTime - params.release);
+        envelope.gain.setValueAtTime(params.sustain, Math.max(0, endTime - params.release));
         envelope.gain.linearRampToValueAtTime(0, endTime);
 
         // Connect: oscillator -> envelope -> instrument node
@@ -322,6 +366,56 @@ class AudioGraphBuilderV2 {
         oscillator.stop(endTime);
 
         return { oscillator, envelope };
+    }
+
+    /**
+     * Play a sample buffer
+     */
+    playSample(sampleNode, frequency, duration, startTime) {
+        if (!sampleNode._buffer) {
+            if (!sampleNode._isLoading) {
+                console.warn(`Sample buffer not loaded: ${sampleNode._sampleUrl}`);
+            }
+            return null;
+        }
+
+        // Create buffer source
+        const bufferSource = this.audioContext.createBufferSource();
+        bufferSource.buffer = sampleNode._buffer;
+
+        // Calculate playback rate for pitch shifting (optional)
+        // frequency parameter can be used to pitch shift samples
+        // Base frequency is assumed to be middle C (261.63 Hz)
+        if (typeof frequency === 'number' && frequency > 0) {
+            const baseFrequency = 261.63; // Middle C
+            bufferSource.playbackRate.value = frequency / baseFrequency;
+        }
+
+        // Create envelope for sample
+        const envelope = this.audioContext.createGain();
+        envelope.gain.setValueAtTime(1, startTime);
+
+        // Simple fade out if duration is shorter than sample
+        const sampleDuration = sampleNode._buffer.duration / (bufferSource.playbackRate.value || 1);
+        const actualDuration = Math.min(duration, sampleDuration);
+        const fadeOutTime = Math.min(0.1, actualDuration * 0.1); // 10% fade out or 100ms max
+
+        if (actualDuration > fadeOutTime) {
+            envelope.gain.setValueAtTime(1, startTime + actualDuration - fadeOutTime);
+            envelope.gain.linearRampToValueAtTime(0, startTime + actualDuration);
+        }
+
+        // Connect: buffer source -> envelope -> sample node
+        bufferSource.connect(envelope);
+        envelope.connect(sampleNode);
+
+        // Start playback
+        bufferSource.start(startTime);
+        
+        // Stop after duration or when sample ends
+        bufferSource.stop(startTime + actualDuration);
+
+        return { bufferSource, envelope };
     }
 }
 
