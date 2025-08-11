@@ -20,6 +20,31 @@ class AudioGraphBuilderV2 {
     }
 
     /**
+     * Convert a parameter value to linear gain.
+     * Supports:
+     * - number (linear)
+     * - { unit: 'dB', value: x }
+     * - string like "-6dB" or "-6 dB"
+     */
+    resolveGainValue(value, defaultValue = 1.0) {
+        if (value == null) return defaultValue;
+        if (typeof value === 'number' && isFinite(value)) return value;
+        if (typeof value === 'object' && value && value.unit === 'dB' && typeof value.value === 'number') {
+            return Math.pow(10, value.value / 20);
+        }
+        if (typeof value === 'string') {
+            const m = value.match(/^\s*(-?\d+(?:\.\d+)?)\s*dB\s*$/i);
+            if (m) {
+                const db = parseFloat(m[1]);
+                return Math.pow(10, db / 20);
+            }
+            const num = parseFloat(value);
+            if (isFinite(num)) return num;
+        }
+        return defaultValue;
+    }
+
+    /**
      * Build the complete audio graph from parsed graph
      * @param {Object} parsedGraph - Output from GraphParser
      * @returns {Map<string, AudioNode[]>} Map of route/instrument names to AudioNode arrays
@@ -125,7 +150,14 @@ class AudioGraphBuilderV2 {
      */
     createGainNode(parameters) {
         const gainNode = this.audioContext.createGain();
-        gainNode.gain.value = parameters.level ?? 1.0;
+        const levelParam = (parameters.level !== undefined)
+            ? parameters.level
+            : (parameters.volume !== undefined)
+                ? parameters.volume
+                : (parameters.gain !== undefined)
+                    ? parameters.gain
+                    : 1.0;
+        gainNode.gain.value = this.resolveGainValue(levelParam, 1.0);
         return gainNode;
     }
 
@@ -213,7 +245,7 @@ class AudioGraphBuilderV2 {
      */
     createSampleNode(parameters) {
         const sampleGain = this.audioContext.createGain();
-        sampleGain.gain.value = parameters.gain ?? 1.0;
+        sampleGain.gain.value = this.resolveGainValue(parameters.gain ?? 1.0, 1.0);
         sampleGain._instrumentType = 'sample';
         sampleGain._sampleUrl = parameters.url;
         sampleGain._buffer = null;

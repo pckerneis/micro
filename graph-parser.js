@@ -408,6 +408,13 @@ class GraphParser {
      * Parse a parameter value (number, string, or boolean)
      */
     parseParameterValue(valueStr) {
+        // Support decibel values like -6dB or 3.5 dB
+        const dbMatch = valueStr.match(/^\s*(-?\d+(?:\.\d+)?)\s*dB\s*$/i);
+        if (dbMatch) {
+            const db = parseFloat(dbMatch[1]);
+            return { unit: 'dB', value: db };
+        }
+
         // Try to parse as number
         const num = parseFloat(valueStr);
         if (isFinite(num)) {
