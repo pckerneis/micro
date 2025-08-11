@@ -16,6 +16,8 @@ class AudioEngineV2 {
         this.pausedTime = 0;
         this.bpm = 120;
         this.stepDuration = 60 / this.bpm; // Duration of one step in seconds
+        // Scheduler grid uses the smallest pattern step duration for accurate sub-steps
+        this.gridStepDuration = this.stepDuration;
         this.schedulerInterval = null;
         this.nextStepTime = 0;
         this.currentStep = 0;
@@ -94,6 +96,24 @@ class AudioEngineV2 {
                 lastTriggeredStep: -1
             });
         }
+
+        // Recalculate scheduling grid based on current patterns
+        this.updateGridStep();
+    }
+
+    /**
+     * Update the scheduler grid step to the smallest pattern step duration
+     */
+    updateGridStep() {
+        // Default to quarter note
+        let minStep = this.stepDuration;
+        for (const pattern of this.patterns.values()) {
+            const patternStep = this.stepDuration * (pattern.duration || 1);
+            if (patternStep > 0 && patternStep < minStep) {
+                minStep = patternStep;
+            }
+        }
+        this.gridStepDuration = minStep;
     }
 
     /**
@@ -104,18 +124,26 @@ class AudioEngineV2 {
 
         this.resetTime();
         
-        if (this.audioContext.state === 'suspended') {
-            try {
-                await this.audioContext.resume();
-            } catch (e) {
-                console.warn('AudioContext resume failed:', e);
-            }
+        // Always attempt to resume; it's a no-op if already running
+        try {
+            await this.audioContext.resume();
+        } catch (e) {
+            console.warn('AudioContext resume failed:', e);
+        }
+        if (this.audioContext.state !== 'running') {
+            console.warn('AudioContext is not running; aborting play');
+            return;
         }
 
         this.isPlaying = true;
         this.startTime = this.audioContext.currentTime - this.pausedTime;
-        // Schedule slightly in the future to avoid race with "now"
-        this.nextStepTime = this.audioContext.currentTime + 0.05;
+        // Schedule slightly in the future and align to grid to avoid index lock
+        const now = this.audioContext.currentTime;
+        const offset = 0.1;
+        const rel = (now + offset) - this.startTime;
+        const stepsAhead = Math.ceil(rel / this.gridStepDuration);
+        this.nextStepTime = this.startTime + stepsAhead * this.gridStepDuration;
+        console.log('[Engine] gridStepDuration=', this.gridStepDuration.toFixed(4), 'pattern step base=', this.stepDuration.toFixed(4));
         this.currentStep = 0;
         
         // Reset all pattern positions
@@ -210,8 +238,8 @@ class AudioEngineV2 {
                 this.schedulePatternStep(routeKey, pattern, this.nextStepTime);
             }
 
-            // Advance to next step - use quarter note steps for now
-            this.nextStepTime += this.stepDuration;
+            // Advance by smallest pattern step to support fractional durations
+            this.nextStepTime += this.gridStepDuration;
             this.currentStep++;
         }
     }
@@ -229,6 +257,8 @@ class AudioEngineV2 {
         // Only trigger if we haven't already triggered this step
         if (totalSteps !== pattern.lastTriggeredStep) {
             const note = pattern.notes[stepIndex];
+
+            console.log({note})
             
             if (note !== null && note !== '_') {
                 this.playNote(patternName, note, patternStepDuration, stepTime);
@@ -274,6 +304,7 @@ class AudioEngineV2 {
     setBPM(bpm) {
         this.bpm = Math.max(60, Math.min(200, bpm));
         this.stepDuration = 60 / this.bpm;
+        this.updateGridStep();
     }
 
     /**

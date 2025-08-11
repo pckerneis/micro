@@ -372,6 +372,7 @@ class AudioGraphBuilderV2 {
      * Play a note on an instrument node
      */
     playNote(instrumentNode, frequency, duration = 1.0, time = 0) {
+        console.log('play note')
         if (!instrumentNode._instrumentType) {
             console.warn('Trying to play note on non-instrument node', instrumentNode);
             return;
@@ -420,6 +421,8 @@ class AudioGraphBuilderV2 {
         // Start and stop
         oscillator.start(startTime);
         oscillator.stop(endTime);
+
+        console.log('osc')
 
         return { oscillator, envelope };
     }
