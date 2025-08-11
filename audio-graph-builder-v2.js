@@ -3,11 +3,13 @@
  * Takes a parsed graph and returns connected AudioNodes
  */
 class AudioGraphBuilderV2 {
-    constructor(audioContext) {
+    constructor(audioContext, outputNode) {
         this.audioContext = audioContext;
+        this.outputNode = outputNode || audioContext.destination;
         this.routeMap = new Map(); // Map of route names to AudioNode arrays
         this.activeNodeCallback = null; // Callback to register active audio nodes
         this.nodeMap = new Map();
+        this.sampleLoadPromises = [];
     }
 
     /**
@@ -22,10 +24,11 @@ class AudioGraphBuilderV2 {
      * @param {Object} parsedGraph - Output from GraphParser
      * @returns {Map<string, AudioNode[]>} Map of route/instrument names to AudioNode arrays
      */
-    buildGraph(parsedGraph) {
+    async buildGraph(parsedGraph) {
         // Clear previous state
         this.nodeMap.clear();
         this.routeMap.clear();
+        this.sampleLoadPromises = [];
 
         // Step 1: Create all AudioNodes
         this.createAllNodes(parsedGraph.nodes);
@@ -35,6 +38,15 @@ class AudioGraphBuilderV2 {
 
         // Step 3: Build route references for pattern scheduling
         this.buildRouteReferences(parsedGraph.namedRoutes, parsedGraph.nodes);
+
+        // Wait for any sample buffers to finish loading before returning
+        if (this.sampleLoadPromises.length > 0) {
+            try {
+                await Promise.all(this.sampleLoadPromises);
+            } catch (e) {
+                console.warn('Some samples failed to load:', e);
+            }
+        }
 
         return this.routeMap;
     }
@@ -209,7 +221,8 @@ class AudioGraphBuilderV2 {
         
         // Load the audio buffer if URL is provided
         if (parameters.url) {
-            this.loadSampleBuffer(sampleGain, parameters.url);
+            const p = this.loadSampleBuffer(sampleGain, parameters.url);
+            this.sampleLoadPromises.push(p);
         }
         
         return sampleGain;
@@ -257,8 +270,8 @@ class AudioGraphBuilderV2 {
             }
 
             if (connection.to === 'MASTER') {
-                // Connect to audio context destination
-                sourceNode.connect(this.audioContext.destination);
+                // Connect to provided output node (e.g., master gain)
+                sourceNode.connect(this.outputNode);
                 console.log(`Connected ${connection.from} -> MASTER`);
             } else {
                 const targetNode = this.nodeMap.get(connection.to);
@@ -288,22 +301,46 @@ class AudioGraphBuilderV2 {
 
         // Add named routes to route map
         for (const [routeName, routeDefinition] of namedRoutes) {
-            const routeNodes = [];
-            
-            // Get all nodes in the route
+            const routeNodeSet = new Set();
+
+            // Always include the actual first node of the route, resolving nested routes
+            const firstNodeName = this.resolveFirstNodeName(routeDefinition.firstNode, namedRoutes);
+            const firstAudioNode = this.nodeMap.get(firstNodeName);
+            if (firstAudioNode) {
+                routeNodeSet.add(firstAudioNode);
+            }
+
+            // Include other nodes, resolving nested route references where possible
             for (const nodeName of routeDefinition.allNodes) {
-                if (nodeName !== 'MASTER') {
-                    const audioNode = this.nodeMap.get(nodeName);
-                    if (audioNode) {
-                        routeNodes.push(audioNode);
-                    }
+                if (nodeName === 'MASTER') continue;
+                const resolvedName = this.resolveFirstNodeName(nodeName, namedRoutes);
+                const audioNode = this.nodeMap.get(resolvedName);
+                if (audioNode) {
+                    routeNodeSet.add(audioNode);
                 }
             }
-            
+
+            const routeNodes = Array.from(routeNodeSet);
             if (routeNodes.length > 0) {
                 this.routeMap.set(routeName, routeNodes);
             }
         }
+    }
+
+    /**
+     * Resolve to the underlying node name if the provided name is a route.
+     * For targets (sources for scheduling), we want the first node of the route.
+     */
+    resolveFirstNodeName(name, namedRoutes) {
+        let current = name;
+        const guard = new Set();
+        while (namedRoutes && namedRoutes.has(current)) {
+            if (guard.has(current)) break; // prevent cycles
+            guard.add(current);
+            const route = namedRoutes.get(current);
+            current = route.firstNode;
+        }
+        return current;
     }
 
     /**
@@ -340,8 +377,9 @@ class AudioGraphBuilderV2 {
             return;
         }
 
-        const startTime = this.audioContext.currentTime + time;
-        console.log({startTime})
+        // 'time' is expected to be an absolute AudioContext time. If not provided, use now.
+        const startTime = (typeof time === 'number' && time > 0) ? time : this.audioContext.currentTime;
+        // console.log({ startTime })
 
         // Handle sample playback
         if (instrumentNode._instrumentType === 'sample') {

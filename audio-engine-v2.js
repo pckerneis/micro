@@ -46,8 +46,8 @@ class AudioEngineV2 {
      */
     async loadGraph(parsedGraph) {
         try {
-            // Create new graph builder
-            this.graphBuilder = new AudioGraphBuilderV2(this.audioContext);
+            // Create new graph builder with master gain as output
+            this.graphBuilder = new AudioGraphBuilderV2(this.audioContext, this.masterGain);
             
             // Set up active node tracking callback
             this.graphBuilder.setActiveNodeCallback((audioNode) => {
@@ -81,10 +81,15 @@ class AudioEngineV2 {
     loadPatterns(patterns) {
         this.patterns.clear();
         
-        for (const [patternName, patternData] of patterns) {
-            this.patterns.set(patternName, {
+        // Parser maps patterns by resolved node key. We re-key by the original target name
+        // (route or alias) so we can use builder.getSourceNodeForRoute()
+        for (const [, patternData] of patterns) {
+            const key = patternData.name; // original target in user code (route or alias)
+            this.patterns.set(key, {
                 notes: patternData.notes,
                 duration: patternData.duration,
+                targetName: key,
+                resolvedName: patternData.resolvedName,
                 currentStep: 0,
                 lastTriggeredStep: -1
             });
@@ -92,59 +97,25 @@ class AudioEngineV2 {
     }
 
     /**
-     * Apply a parsed graph to build the audio graph
-     */
-    applyParsedGraph(parsedGraph) {
-        try {
-            // Clear previous state
-            this.stop();
-            this.routeMap.clear();
-            this.patterns.clear();
-
-            // Build audio graph using new graph builder
-            this.routeMap = this.graphBuilder.buildGraph(parsedGraph);
-
-            // Store patterns for scheduling
-            for (const [targetName, pattern] of parsedGraph.patterns) {
-                this.patterns.set(pattern.name, {
-                    targetName: targetName,
-                    notes: pattern.notes,
-                    duration: pattern.duration,
-                    currentStep: 0,
-                    lastTriggeredStep: -1
-                });
-            }
-
-            console.log(`Applied graph: ${this.routeMap.size} routes, ${this.patterns.size} patterns`);
-            
-            return {
-                success: true,
-                errors: []
-            };
-        } catch (error) {
-            console.error('Failed to apply parsed graph:', error);
-            return {
-                success: false,
-                errors: [error.message]
-            };
-        }
-    }
-
-    /**
      * Start playback
      */
-    play() {
+    async play() {
         if (this.isPlaying) return;
 
         this.resetTime();
         
         if (this.audioContext.state === 'suspended') {
-            this.audioContext.resume();
+            try {
+                await this.audioContext.resume();
+            } catch (e) {
+                console.warn('AudioContext resume failed:', e);
+            }
         }
 
         this.isPlaying = true;
         this.startTime = this.audioContext.currentTime - this.pausedTime;
-        this.nextStepTime = this.audioContext.currentTime;
+        // Schedule slightly in the future to avoid race with "now"
+        this.nextStepTime = this.audioContext.currentTime + 0.05;
         this.currentStep = 0;
         
         // Reset all pattern positions
@@ -231,12 +202,12 @@ class AudioEngineV2 {
         if (!this.isPlaying) return;
 
         const currentTime = this.audioContext.currentTime;
-        const lookAhead = 0.1; // Look ahead 100ms
+        const lookAhead = 0.15; // Look ahead 150ms for robustness
 
         // Schedule notes that should play within the look-ahead window
         while (this.nextStepTime < currentTime + lookAhead) {
-            for (const [patternName, pattern] of this.patterns) {
-                this.schedulePatternStep(patternName, pattern, this.nextStepTime);
+            for (const [routeKey, pattern] of this.patterns) {
+                this.schedulePatternStep(routeKey, pattern, this.nextStepTime);
             }
 
             // Advance to next step - use quarter note steps for now

@@ -173,10 +173,10 @@ class MicroApp {
 
         try {
             // Execute code first
-            this.executeCode();
+            await this.executeCode();
             
             // Start playback
-            this.audioEngine.play();
+            await this.audioEngine.play();
             this.updateStatus('Playing');
             this.log('Playback started', 'success');
             
