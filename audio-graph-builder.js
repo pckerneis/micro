@@ -146,11 +146,12 @@ class AudioGraphBuilder {
      */
     buildParallelChains(sourceNode, effectChains, feedbackConnections = []) {
         if (!effectChains || effectChains.length === 0) {
-            return;
+            return [sourceNode];
         }
 
         // Store created effect nodes for feedback connections
         const effectNodes = new Map();
+        const finalNodes = [];
 
         // Build each parallel chain
         effectChains.forEach((chain) => {
@@ -166,11 +167,14 @@ class AudioGraphBuilder {
                 effectNodes.set(name, node);
             });
             
-            return result;
+            // Collect final nodes for output connection
+            finalNodes.push(result.finalNode);
         });
 
         // Process feedback connections after all chains are built
         this.processFeedbackConnections(feedbackConnections, effectNodes);
+        
+        return finalNodes;
     }
 
     /**

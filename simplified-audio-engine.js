@@ -95,28 +95,16 @@ class SimplifiedAudioEngine {
     }
 
     /**
-     * Set effect chains for an instrument
-     * @param {string} instrumentName - Name of the instrument
-     * @param {Array} effectChain - Array of effect definitions
-     */
-    setInstrumentEffectChain(instrumentName, effectChain) {
-        const instrument = this.instruments.get(instrumentName);
-        if (instrument) {
-            // Wrap single chain in array for consistency
-            instrument.setEffectChains([effectChain]);
-        }
-    }
-
-    /**
      * Set multiple effect chains for an instrument (for parallel routing)
      * @param {string} instrumentName - Name of the instrument
      * @param {Array<Array>} effectChains - Array of effect chain arrays
      * @param {Array} feedbackConnections - Array of feedback connection definitions
+     * @param {Array<boolean>} masterConnections - Array indicating which chains connect to MASTER
      */
-    setInstrumentEffectChains(instrumentName, effectChains, feedbackConnections = []) {
+    setInstrumentEffectChains(instrumentName, effectChains, feedbackConnections = [], masterConnections = []) {
         const instrument = this.instruments.get(instrumentName);
         if (instrument) {
-            instrument.setEffectChains(effectChains, feedbackConnections);
+            instrument.setEffectChains(effectChains, feedbackConnections, masterConnections);
         }
     }
 

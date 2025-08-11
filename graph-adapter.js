@@ -209,24 +209,29 @@ class GraphAdapter {
 
         // Convert each connection chain to effect chain format
         const effectChains = [];
+        const masterConnections = []; // Track which chains connect to MASTER
 
-        for (const targetChain of targetChains) {
+        for (let i = 0; i < targetChains.length; i++) {
+            const targetChain = targetChains[i];
             const effectChain = [];
+            let connectsToMaster = false;
 
             for (const target of targetChain) {
                 if (target === 'MASTER') {
+                    console.log('FOUND MASTER CONN')
                     // End of chain - connects to output
+                    connectsToMaster = true;
                     break;
                 }
 
-                // Check if target is a named effect (but not anonymous nodes)
-                if (this.audioEngine.namedEffects.has(target) && !target.startsWith('_anon_')) {
+                // Check if target is a named effect
+                if (this.audioEngine.namedEffects.has(target)) {
                     effectChain.push({
                         type: 'named',
                         name: target
                     });
                 } else {
-                    // Target should be an inline effect node (including anonymous nodes)
+                    // Target should be an inline effect node
                     const targetNode = this.findNodeByName(target);
                     if (targetNode) {
                         effectChain.push({
@@ -238,11 +243,12 @@ class GraphAdapter {
             }
 
             effectChains.push(effectChain);
+            masterConnections.push(connectsToMaster);
         }
 
-        // Apply all effect chains to the instrument
+        // Apply all effect chains to the instrument with explicit MASTER connection info
         if (effectChains.length > 0) {
-            this.audioEngine.setInstrumentEffectChains(instrumentName, effectChains, feedbackConnections);
+            this.audioEngine.setInstrumentEffectChains(instrumentName, effectChains, feedbackConnections, masterConnections);
         }
     }
 
@@ -313,25 +319,6 @@ class AudioEngineGraphExtensions {
             currentStep: 0,
             lastTriggeredStep: -1
         });
-    }
-
-    /**
-     * Set an effect chain for an instrument
-     */
-    setInstrumentEffectChain(instrumentName, effectChain) {
-        const instrument = this.instruments.get(instrumentName);
-        if (instrument) {
-            instrument.effectChains = [effectChain]; // Wrap in array for multiple chains support
-        }
-    }
-
-    /**
-     * Apply a parsed graph to this audio engine
-     */
-    applyParsedGraph(parsedGraph) {
-        const adapter = new GraphAdapter(this);
-        adapter.setCurrentNodes(parsedGraph.nodes);
-        return adapter.applyGraph(parsedGraph);
     }
 }
 

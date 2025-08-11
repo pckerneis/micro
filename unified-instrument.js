@@ -11,6 +11,7 @@ class UnifiedInstrument {
         this.destination = destination;
         this.graphBuilder = audioGraphBuilder;
         this.effectChains = [];
+        this.masterConnections = [];
         
         // Initialize based on instrument type
         if (config.type === 'sample') {
@@ -127,32 +128,49 @@ class UnifiedInstrument {
         // Process effect chains
         this.processEffectChains(gainNode);
 
-        // Start and stop oscillator
         oscillator.start(time);
         oscillator.stop(time + duration);
     }
 
     /**
-     * Set effect chains for this instrument
-     * @param {Array<Array>} effectChains - Array of effect chain arrays
+     * Set effect chains with feedback support
+     * @param {Array} effectChains - Array of effect chain arrays
      * @param {Array} feedbackConnections - Array of feedback connection definitions
+     * @param {Array<boolean>} masterConnections - Array indicating which chains connect to MASTER
      */
-    setEffectChains(effectChains, feedbackConnections = []) {
+    setEffectChains(effectChains, feedbackConnections = [], masterConnections = []) {
         this.effectChains = effectChains || [];
         this.feedbackConnections = feedbackConnections || [];
+        this.masterConnections = masterConnections || [];
     }
 
     /**
      * Process effect chains for the given source node
      */
     processEffectChains(sourceNode) {
-        console.log("process effect chains", sourceNode, this.effectChains)
-        if (this.effectChains.length === 1) {
+        if (this.effectChains.length === 0) {
+            // No effects - only connect to destination if explicitly routed to MASTER
+            if (this.masterConnections.length > 0 && this.masterConnections[0]) {
+                sourceNode.connect(this.destination);
+            }
+        } else if (this.effectChains.length === 1) {
             // Single effect chain
-            this.graphBuilder.buildEffectChain(sourceNode, this.effectChains[0]);
+            const finalNode = this.graphBuilder.buildEffectChain(sourceNode, this.effectChains[0]);
+            // Only connect to destination if this chain has explicit MASTER connection
+            if (this.masterConnections.length > 0 && this.masterConnections[0]) {
+                finalNode.connect(this.destination);
+            }
         } else {
             // Multiple parallel effect chains with feedback support
-            this.graphBuilder.buildParallelChains(sourceNode, this.effectChains, this.feedbackConnections);
+            const finalNodes = this.graphBuilder.buildParallelChains(sourceNode, this.effectChains, this.feedbackConnections);
+            // Only connect chains that have explicit MASTER connections
+            if (finalNodes && Array.isArray(finalNodes)) {
+                finalNodes.forEach((node, index) => {
+                    if (this.masterConnections[index]) {
+                        node.connect(this.destination);
+                    }
+                });
+            }
         }
     }
 

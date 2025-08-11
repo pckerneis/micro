@@ -315,8 +315,7 @@ class MicroApp {
         
         // Add nodes with readable names and styling
         const nodeNames = new Map();
-        const typeCounters = new Map();
-        
+
         for (const [name, node] of nodes) {
             let readableName = name;
             nodeNames.set(name, readableName);

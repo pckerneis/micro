@@ -202,7 +202,6 @@ class GraphParser {
             return;
         }
 
-        // Create all nodes in the route with anonymous names
         const nodeNames = [];
         
         // Process each part in the chain
@@ -211,8 +210,7 @@ class GraphParser {
             const node = this.parseNodeExpression(part);
             
             if (node) {
-                // All nodes get anonymous names (routes don't create named nodes)
-                const nodeName = this.generateAnonymousName(node);
+                const nodeName = this.generateNodeName(node);
                 node.name = nodeName;
                 this.nodes.set(nodeName, node);
                 nodeNames.push(nodeName);
@@ -266,8 +264,7 @@ class GraphParser {
             const targetNode = this.parseNodeExpression(targetExpression);
             
             if (targetNode) {
-                // Create anonymous node for inline definitions
-                const targetName = this.generateAnonymousName(targetNode);
+                const targetName = this.generateNodeName(targetNode);
                 targetNode.name = targetName;
                 this.nodes.set(targetName, targetNode);
                 
@@ -370,8 +367,7 @@ class GraphParser {
             const valueStr = trimmedPart.substring(equalIndex + 1).trim();
             
             // Parse the value (number, string, or boolean)
-            const value = this.parseParameterValue(valueStr);
-            parameters[key] = value;
+            parameters[key] = this.parseParameterValue(valueStr);
         }
 
         return parameters;
@@ -518,9 +514,9 @@ class GraphParser {
     }
 
     /**
-     * Generate a unique anonymous node name
+     * Generate a unique node name
      */
-    generateAnonymousName(node) {
+    generateNodeName(node) {
         const type = node.type;
         let counter = 0;
 
