@@ -9,7 +9,6 @@ class UnifiedInstrument {
     constructor(audioContext, destination, config, audioGraphBuilder) {
         this.audioContext = audioContext;
         this.destination = destination;
-        this.config = config;
         this.graphBuilder = audioGraphBuilder;
         this.effectChains = [];
         
@@ -61,14 +60,6 @@ class UnifiedInstrument {
             console.warn(`Could not load sample ${this.url}:`, error.message);
             this.buffer = null;
         }
-    }
-
-    /**
-     * Set effect chains for this instrument
-     * @param {Array} chains - Array of effect chain arrays
-     */
-    setEffectChains(chains) {
-        this.effectChains = chains || [];
     }
 
     /**
@@ -155,15 +146,13 @@ class UnifiedInstrument {
      * Process effect chains for the given source node
      */
     processEffectChains(sourceNode) {
-        if (this.effectChains.length === 0) {
-            // No effects - connect directly to destination
-            sourceNode.connect(this.destination);
-        } else if (this.effectChains.length === 1) {
+        console.log("process effect chains", sourceNode, this.effectChains)
+        if (this.effectChains.length === 1) {
             // Single effect chain
-            this.graphBuilder.buildEffectChain(sourceNode, this.effectChains[0], this.destination);
+            this.graphBuilder.buildEffectChain(sourceNode, this.effectChains[0]);
         } else {
             // Multiple parallel effect chains with feedback support
-            this.graphBuilder.buildParallelChains(sourceNode, this.effectChains, this.destination, this.feedbackConnections);
+            this.graphBuilder.buildParallelChains(sourceNode, this.effectChains, this.feedbackConnections);
         }
     }
 

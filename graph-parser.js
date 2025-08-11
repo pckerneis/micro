@@ -9,6 +9,7 @@ class GraphParser {
         this.nodes = new Map();           // name -> NodeDefinition
         this.connections = [];            // array of Connection objects
         this.patterns = new Map();        // name -> PatternDefinition
+        this.namedRoutes = new Map();     // name -> RouteDefinition
         this.errors = [];
     }
 
@@ -27,13 +28,11 @@ class GraphParser {
         this.parseRoutingLines(lines);
         this.parsePatterns(lines);
         
-        // Add default MASTER connections for instruments without explicit routing
-        this.addDefaultMasterConnections();
-        
         return {
             nodes: this.nodes,
             connections: this.connections,
             patterns: this.patterns,
+            namedRoutes: this.namedRoutes,
             errors: this.errors
         };
     }
@@ -42,6 +41,7 @@ class GraphParser {
         this.nodes.clear();
         this.connections = [];
         this.patterns.clear();
+        this.namedRoutes.clear();
         this.errors = [];
     }
 
@@ -122,18 +122,12 @@ class GraphParser {
                 const name = line.substring(0, equalIndex).trim();
                 const definition = line.substring(equalIndex + 1).trim();
 
-                if (!this.isValidNodeName(name)) {
+                if (!this.isValidRouteName(name)) {
                     this.errors.push(`Invalid node name: ${name}`);
                     continue;
                 }
 
-                if (definition.includes('->')) {
-                    // Named line with routing: lead = sine{decay=0.1} -> gain{value=0.5}
-                    this.parseNamedChain(name, definition);
-                } else {
-                    // Simple named node: delay = delay{time=0.33}
-                    this.parseNamedNode(name, definition);
-                }
+                this.parseNamedChain(name, definition);
             }
         }
     }
@@ -197,32 +191,18 @@ class GraphParser {
     }
 
     /**
-     * Parse a named node definition
-     * Example: delay = delay{time=0.33}
-     */
-    parseNamedNode(name, definition) {
-        const node = this.parseNodeExpression(definition);
-        if (node) {
-            node.name = name;
-            this.nodes.set(name, node);
-        } else {
-            this.errors.push(`Failed to parse node definition: ${definition}`);
-        }
-    }
-
-    /**
-     * Parse a named chain definition
-     * Example: lead = sine{decay=0.1} -> gain{value=0.5}
+     * Parse a named route definition
+     * Example: route1 = lowpass{cutoff=200} -> reverb{size=3.0, length=10}
      */
     parseNamedChain(name, definition) {
         const parts = definition.split('->').map(part => part.trim());
         
         if (parts.length === 0) {
-            this.errors.push(`Empty chain definition for: ${name}`);
+            this.errors.push(`Empty route definition for: ${name}`);
             return;
         }
 
-        // Create all nodes first, then assign the name to the first one (source instrument)
+        // Create all nodes in the route with anonymous names
         const nodeNames = [];
         
         // Process each part in the chain
@@ -231,8 +211,8 @@ class GraphParser {
             const node = this.parseNodeExpression(part);
             
             if (node) {
-                // Assign the chain name to the first node (source), others get anonymous names
-                const nodeName = (i === 0) ? name : this.generateAnonymousName();
+                // All nodes get anonymous names (routes don't create named nodes)
+                const nodeName = this.generateAnonymousName(node);
                 node.name = nodeName;
                 this.nodes.set(nodeName, node);
                 nodeNames.push(nodeName);
@@ -240,17 +220,30 @@ class GraphParser {
                 // MASTER is not a node, just a connection target
                 nodeNames.push('MASTER');
             } else {
-                // Reference to existing node
+                // Reference to existing node or route
                 nodeNames.push(part);
             }
         }
 
-        // Create connections between consecutive nodes
+        // Create connections between nodes, resolving route references
         for (let i = 0; i < nodeNames.length - 1; i++) {
-            this.connections.push({
-                from: nodeNames[i],
-                to: nodeNames[i + 1]
-            });
+            const fromNode = nodeNames[i];
+            const toNode = nodeNames[i + 1];
+            
+            // Resolve route references for connections
+            const resolvedTo = this.resolveNodeOrRoute(toNode, 'target');
+            
+            this.connections.push({ from: fromNode, to: resolvedTo });
+        }
+
+        // Create named route definition
+        if (nodeNames.length > 0) {
+            const firstNode = nodeNames[0];
+            // For the last node, if it's a route reference, use the resolved node
+            const lastNodeName = nodeNames[nodeNames.length - 1];
+            const lastNode = this.resolveNodeOrRoute(lastNodeName, 'source');
+            
+            this.namedRoutes.set(name, new RouteDefinition(name, firstNode, lastNode, nodeNames));
         }
     }
 
@@ -266,7 +259,7 @@ class GraphParser {
             return;
         }
 
-        let currentNodeName = parts[0];
+        let currentNodeName = this.resolveNodeOrRoute(parts[0], 'source');
         
         for (let i = 1; i < parts.length; i++) {
             const targetExpression = parts[i];
@@ -274,7 +267,7 @@ class GraphParser {
             
             if (targetNode) {
                 // Create anonymous node for inline definitions
-                const targetName = this.generateAnonymousName();
+                const targetName = this.generateAnonymousName(targetNode);
                 targetNode.name = targetName;
                 this.nodes.set(targetName, targetNode);
                 
@@ -292,12 +285,13 @@ class GraphParser {
                     to: 'MASTER'
                 });
             } else {
-                // Reference to existing node
+                // Reference to existing node or route
+                const resolvedTarget = this.resolveNodeOrRoute(targetExpression, 'target');
                 this.connections.push({
                     from: currentNodeName,
-                    to: targetExpression
+                    to: resolvedTarget
                 });
-                currentNodeName = targetExpression;
+                currentNodeName = resolvedTarget;
             }
         }
     }
@@ -472,7 +466,7 @@ class GraphParser {
             return;
         }
 
-        const [, instrumentName, notesStr, durationStr] = match;
+        const [, targetName, notesStr, durationStr] = match;
         const notes = notesStr.split(/\s+/).map(note => {
             if (note === '_') return null;
             const num = parseFloat(note);
@@ -485,8 +479,13 @@ class GraphParser {
             return;
         }
 
-        this.patterns.set(instrumentName, {
-            name: instrumentName,
+        // Resolve the target (could be a node or route)
+        // For patterns, we always want the first node (source instrument)
+        const resolvedTarget = this.resolveNodeOrRoute(targetName, 'target');
+
+        this.patterns.set(resolvedTarget, {
+            name: targetName,  // Keep original name for reference
+            resolvedName: resolvedTarget,  // Actual node name to target
             notes: notes,
             duration: duration
         });
@@ -495,156 +494,50 @@ class GraphParser {
     /**
      * Check if a node name is valid
      */
-    isValidNodeName(name) {
+    isValidRouteName(name) {
         return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name);
     }
 
     /**
-     * Add default MASTER connections for nodes without explicit output routing
-     * Rule: A node is connected to MASTER only if its output is NOT explicitly routed to another node
+     * Resolve a node or route reference to the actual node name
+     * @param {string} name - Name to resolve (could be node or route)
+     * @param {string} context - 'source' or 'target' to determine which end of route to use
+     * @returns {string} Resolved node name
      */
-    addDefaultMasterConnections() {
-        // Find all nodes that have explicit outgoing connections to non-MASTER targets
-        const nodesWithExplicitRouting = new Set();
-        for (const connection of this.connections) {
-            if (connection.to !== 'MASTER') {
-                nodesWithExplicitRouting.add(connection.from);
-            }
+    resolveNodeOrRoute(name, context) {
+        // Check if it's a named route
+        if (this.namedRoutes.has(name)) {
+            const route = this.namedRoutes.get(name);
+            // For source context (connecting FROM route), use last node
+            // For target context (connecting TO route), use first node
+            return context === 'source' ? route.lastNode : route.firstNode;
         }
         
-        // Find all nodes that are targets (have incoming connections) 
-        const targetsWithConnections = new Set();
-        for (const connection of this.connections) {
-            if (connection.to !== 'MASTER') {
-                targetsWithConnections.add(connection.to);
-            }
-        }
-        
-        // Find all instrument nodes (not effects)
-        const instrumentTypes = ['sine', 'square', 'sawtooth', 'triangle', 'sample'];
-        const instrumentNodes = new Set();
-        
-        for (const [name, node] of this.nodes) {
-            if (instrumentTypes.includes(node.type)) {
-                instrumentNodes.add(name);
-            }
-        }
-        
-        // Case 1: Add MASTER connections for instruments that don't have explicit routing to other nodes
-        for (const instrumentName of instrumentNodes) {
-            if (!nodesWithExplicitRouting.has(instrumentName)) {
-                // Check if it already connects to MASTER
-                const alreadyConnectsToMaster = this.connections.some(conn => 
-                    conn.from === instrumentName && conn.to === 'MASTER'
-                );
-                
-                if (!alreadyConnectsToMaster) {
-                    this.connections.push({
-                        from: instrumentName,
-                        to: 'MASTER'
-                    });
-                }
-            }
-        }
-        
-        // Case 2: Add MASTER connections for chain endpoints (nodes that have incoming connections but no outgoing connections to non-MASTER targets)
-        for (const [name, node] of this.nodes) {
-            // If this node receives connections but doesn't send any to non-MASTER targets, it's a chain endpoint
-            if (targetsWithConnections.has(name) && !nodesWithExplicitRouting.has(name)) {
-                // Check if it already connects to MASTER
-                const alreadyConnectsToMaster = this.connections.some(conn => 
-                    conn.from === name && conn.to === 'MASTER'
-                );
-                
-                if (!alreadyConnectsToMaster) {
-                    this.connections.push({
-                        from: name,
-                        to: 'MASTER'
-                    });
-                }
-            }
-        }
+        // Not a route, return as-is (should be a node name)
+        return name;
     }
 
     /**
      * Generate a unique anonymous node name
      */
-    generateAnonymousName() {
-        const timestamp = Date.now();
-        const random = Math.floor(Math.random() * 1000);
-        return `_anon_${timestamp}_${random}`;
-    }
+    generateAnonymousName(node) {
+        const type = node.type;
+        let counter = 0;
 
-    /**
-     * Get all errors that occurred during parsing
-     */
-    getErrors() {
-        return [...this.errors];
-    }
+        while (this.nodes.has(`${type}-${counter}`)) {
+            counter++;
+        }
 
-    /**
-     * Get the parsed audio graph
-     */
-    getGraph() {
-        return {
-            nodes: this.nodes,
-            connections: this.connections,
-            patterns: this.patterns
-        };
-    }
-
-    /**
-     * Print the parsed graph for debugging
-     */
-    printGraph() {
-        console.log('=== PARSED AUDIO GRAPH ===');
-        
-        console.log('\nNodes:');
-        for (const [name, node] of this.nodes) {
-            console.log(`  ${name}: ${node.type}`, node.parameters);
-        }
-        
-        console.log('\nConnections:');
-        for (const conn of this.connections) {
-            console.log(`  ${conn.from} -> ${conn.to}`);
-        }
-        
-        console.log('\nPatterns:');
-        for (const [name, pattern] of this.patterns) {
-            console.log(`  @${name} [${pattern.notes.join(' ')}] ${pattern.duration}`);
-        }
-        
-        if (this.errors.length > 0) {
-            console.log('\nErrors:');
-            for (const error of this.errors) {
-                console.log(`  ERROR: ${error}`);
-            }
-        }
+        return `${type}-${counter}`;
     }
 }
 
-// Node definition structure
-class NodeDefinition {
-    constructor(type, parameters = {}, name = null) {
-        this.type = type;           // 'delay', 'sine', 'gain', etc.
-        this.parameters = parameters; // {time: 0.33, feedback: 0.5}
-        this.name = name;           // 'fd', 'lead', etc. (null for anonymous)
-    }
-}
-
-// Connection structure
-class Connection {
-    constructor(from, to) {
-        this.from = from;  // Source node name
-        this.to = to;      // Target node name (or 'MASTER')
-    }
-}
-
-// Pattern definition structure
-class PatternDefinition {
-    constructor(name, notes, duration) {
-        this.name = name;
-        this.notes = notes;
-        this.duration = duration;
+// Route definition structure
+class RouteDefinition {
+    constructor(name, firstNode, lastNode, allNodes) {
+        this.name = name;           // Route name
+        this.firstNode = firstNode; // First node in the route (connection target)
+        this.lastNode = lastNode;   // Last node in the route (connection source)
+        this.allNodes = allNodes;   // All nodes in the route
     }
 }

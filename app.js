@@ -118,6 +118,8 @@ class MicroApp {
         
         // Step 1: Parse code with GraphParser (decoupled from audio engine)
         const parsedGraph = this.parser.parse(code);
+
+        console.log({ parsedGraph })
         
         if (parsedGraph.errors.length > 0) {
             parsedGraph.errors.forEach(error => {
@@ -317,29 +319,6 @@ class MicroApp {
         
         for (const [name, node] of nodes) {
             let readableName = name;
-            
-            // Generate user-friendly names for anonymous nodes
-            if (name.startsWith('_anon_')) {
-                const nodeType = node.type;
-                const counter = (typeCounters.get(nodeType) || 0) + 1;
-                typeCounters.set(nodeType, counter);
-                
-                // Create descriptive names based on type
-                if (['sine', 'square', 'sawtooth', 'triangle'].includes(nodeType)) {
-                    readableName = `${nodeType}${counter > 1 ? counter : ''}`;
-                } else if (nodeType === 'sample') {
-                    readableName = `sample${counter > 1 ? counter : ''}`;
-                } else if (nodeType === 'delay') {
-                    readableName = `delay${counter > 1 ? counter : ''}`;
-                } else if (nodeType === 'gain') {
-                    readableName = `gain${counter > 1 ? counter : ''}`;
-                } else if (nodeType === 'lowpass') {
-                    readableName = `filter${counter > 1 ? counter : ''}`;
-                } else {
-                    readableName = `${nodeType}${counter > 1 ? counter : ''}`;
-                }
-            }
-            
             nodeNames.set(name, readableName);
             
             // Determine node styling based on type

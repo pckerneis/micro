@@ -72,8 +72,7 @@ class AudioGraphBuilder {
      */
     createGainNode(effect) {
         const gainNode = this.audioContext.createGain();
-        const level = isFinite(effect.level) && effect.level >= 0 ? effect.level : 1.0;
-        gainNode.gain.value = level;
+        gainNode.gain.value = isFinite(effect.level) && effect.level >= 0 ? effect.level : 1.0;
         return gainNode;
     }
 
@@ -81,13 +80,10 @@ class AudioGraphBuilder {
      * Build a complete effect chain from source to destination
      * @param {AudioNode} sourceNode - Input audio node
      * @param {Array} effectChain - Array of effect definitions
-     * @param {AudioNode} outputNode - Final destination (optional, defaults to this.destination)
      * @returns {AudioNode} Final node in the chain
      */
-    buildEffectChain(sourceNode, effectChain, outputNode = this.destination) {
+    buildEffectChain(sourceNode, effectChain) {
         if (!effectChain || effectChain.length === 0) {
-            // No effects - connect directly to output
-            sourceNode.connect(outputNode);
             return sourceNode;
         }
 
@@ -102,8 +98,6 @@ class AudioGraphBuilder {
             }
         }
 
-        // Connect final node to output
-        currentNode.connect(outputNode);
         return currentNode;
     }
 
@@ -111,15 +105,12 @@ class AudioGraphBuilder {
      * Build a complete effect chain and return both the final node and all created nodes
      * @param {AudioNode} sourceNode - Input audio node
      * @param {Array} effectChain - Array of effect definitions
-     * @param {AudioNode} outputNode - Final destination (optional, defaults to this.destination)
      * @returns {Object} Object with finalNode and nodes Map
      */
-    buildEffectChainWithNodes(sourceNode, effectChain, outputNode = this.destination) {
+    buildEffectChainWithNodes(sourceNode, effectChain) {
         const nodes = new Map();
         
         if (!effectChain || effectChain.length === 0) {
-            // No effects - connect directly to output
-            sourceNode.connect(outputNode);
             return { finalNode: sourceNode, nodes };
         }
 
@@ -144,8 +135,6 @@ class AudioGraphBuilder {
             }
         }
 
-        // Connect final node to output
-        currentNode.connect(outputNode);
         return { finalNode: currentNode, nodes };
     }
 
@@ -153,12 +142,10 @@ class AudioGraphBuilder {
      * Build multiple parallel effect chains from a single source
      * @param {AudioNode} sourceNode - Input audio node
      * @param {Array} effectChains - Array of effect chain arrays
-     * @param {AudioNode} outputNode - Final destination
      * @param {Array} feedbackConnections - Array of feedback connection definitions
      */
-    buildParallelChains(sourceNode, effectChains, outputNode = this.destination, feedbackConnections = []) {
+    buildParallelChains(sourceNode, effectChains, feedbackConnections = []) {
         if (!effectChains || effectChains.length === 0) {
-            sourceNode.connect(outputNode);
             return;
         }
 
@@ -166,13 +153,13 @@ class AudioGraphBuilder {
         const effectNodes = new Map();
 
         // Build each parallel chain
-        const chainResults = effectChains.map((chain, index) => {
+        effectChains.forEach((chain) => {
             // Create a gain node to split the signal for this chain
             const splitter = this.audioContext.createGain();
             sourceNode.connect(splitter);
             
             // Build the effect chain from the splitter and collect nodes
-            const result = this.buildEffectChainWithNodes(splitter, chain, outputNode);
+            const result = this.buildEffectChainWithNodes(splitter, chain);
             
             // Store nodes for feedback connections
             result.nodes.forEach((node, name) => {
@@ -218,7 +205,7 @@ class AudioGraphBuilder {
      * @param {string} type - Oscillator type (sine, square, etc.)
      * @param {Object} envelope - ADSR parameters
      * @param {number} duration - Note duration in seconds
-     * @returns {AudioNode} Gain node with envelope applied
+     * @returns {{oscillator: AudioNode, gainNode: AudioNode}} Gain node with envelope applied
      */
     createOscillatorWithEnvelope(frequency, type, envelope, duration) {
         const oscillator = this.audioContext.createOscillator();
