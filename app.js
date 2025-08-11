@@ -1,6 +1,6 @@
 class MicroApp {
     constructor() {
-        this.audioEngine = new SimplifiedAudioEngine();
+        this.audioEngine = new AudioEngineV2();
         this.parser = new GraphParser();
         this.editor = null;
         this.isInitialized = false;
@@ -116,7 +116,7 @@ class MicroApp {
         const code = this.editor.getValue();
         this.log('Parsing code...', 'info');
         
-        // Step 1: Parse code with GraphParser (decoupled from audio engine)
+        // Step 1: Parse code with GraphParser
         const parsedGraph = this.parser.parse(code);
 
         console.log({ parsedGraph })
@@ -128,26 +128,28 @@ class MicroApp {
             return;
         }
         
-        // Store parsed graph for visualization
         this.lastParsedGraph = parsedGraph;
         
         this.log('Code parsed successfully!', 'success');
         this.log(`Parsed ${parsedGraph.nodes.size} nodes, ${parsedGraph.connections.length} connections, ${parsedGraph.patterns.size} patterns`, 'info');
         
-        // Step 2: Apply parsed graph to audio engine via GraphAdapter
-        this.log('Applying to audio engine...', 'info');
+        // Step 2: Apply parsed graph to audio engine
+        this.log('Building audio graph...', 'info');
         const integrationResult = this.audioEngine.applyParsedGraph(parsedGraph);
         
         if (integrationResult.success) {
-            this.log('Integration successful!', 'success');
-            const instrumentCount = this.audioEngine.instruments.size;
-            const patternCount = this.audioEngine.patterns.size;
-            this.log(`Loaded ${instrumentCount} instruments, ${patternCount} patterns`, 'info');
+            this.log('Audio graph built successfully!', 'success');
+            const routes = this.audioEngine.getRoutes();
+            const patterns = this.audioEngine.getPatterns();
+            this.log(`Built ${Object.keys(routes).length} routes, ${Object.keys(patterns).length} patterns`, 'info');
         } else {
             integrationResult.errors.forEach(error => {
                 this.log(error, 'error');
             });
         }
+        
+        // Save code to localStorage
+        localStorage.setItem('micro-code', code);
     }
 
     saveCode() {
