@@ -87,6 +87,8 @@ class AudioEngineV2 {
      */
     play() {
         if (this.isPlaying) return;
+
+        this.resetTime();
         
         if (this.audioContext.state === 'suspended') {
             this.audioContext.resume();

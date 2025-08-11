@@ -81,13 +81,11 @@ class MicroApp {
 
     setupEventListeners() {
         const playBtn = document.getElementById('playBtn');
-        const stopBtn = document.getElementById('stopBtn');
         const graphBtn = document.getElementById('graphBtn');
         const masterGainSlider = document.getElementById('masterGain');
         const volumeValue = document.getElementById('volumeValue');
 
-        playBtn.addEventListener('click', () => this.play());
-        stopBtn.addEventListener('click', () => this.stop());
+        playBtn.addEventListener('click', () => this.togglePlayback());
         graphBtn.addEventListener('click', () => this.showGraph());
         
         // Start time display update interval
@@ -180,7 +178,7 @@ class MicroApp {
             this.log('Playback started', 'success');
             
             // Update UI
-            document.getElementById('playBtn').textContent = '⏸ Pause';
+            document.getElementById('playBtn').textContent = '⏹ Stop';
         } catch (error) {
             this.log(`Playback error: ${error.message}`, 'error');
         }
@@ -191,6 +189,7 @@ class MicroApp {
         this.audioEngine.stop();
         this.updateStatus('Stopped');
         this.log('Playback stopped', 'info');
+        document.getElementById('playBtn').textContent = '▶ Play';
     }
 
     togglePlayback() {
@@ -214,7 +213,7 @@ class MicroApp {
         // Update time display every 100ms
         setInterval(() => {
             this.updateTimeDisplay();
-        }, 100);
+        }, 60);
     }
 
     /**
