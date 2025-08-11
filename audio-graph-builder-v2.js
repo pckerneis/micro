@@ -378,7 +378,10 @@ class AudioGraphBuilderV2 {
         }
 
         // 'time' is expected to be an absolute AudioContext time. If not provided, use now.
-        const startTime = (typeof time === 'number' && time > 0) ? time : this.audioContext.currentTime;
+        let startTime = (typeof time === 'number' && time > 0) ? time : this.audioContext.currentTime;
+        // Clamp to a tiny bit in the future to avoid past-start edge cases
+        const now = this.audioContext.currentTime;
+        startTime = Math.max(startTime, now + 0.005);
         // console.log({ startTime })
 
         // Handle sample playback
@@ -444,13 +447,17 @@ class AudioGraphBuilderV2 {
             bufferSource.playbackRate.value = frequency / baseFrequency;
         }
 
+        // Clamp start time to avoid past scheduling
+        const now = this.audioContext.currentTime;
+        startTime = Math.max(startTime, now + 0.005);
+
         // Create envelope for sample
         const envelope = this.audioContext.createGain();
         envelope.gain.setValueAtTime(1, startTime);
 
         // Simple fade out if duration is shorter than sample
         const sampleDuration = sampleNode._buffer.duration / (bufferSource.playbackRate.value || 1);
-        const actualDuration = Math.min(duration, sampleDuration);
+        const actualDuration = Math.max(0.01, Math.min(duration, sampleDuration));
         const fadeOutTime = Math.min(0.1, actualDuration * 0.1); // 10% fade out or 100ms max
 
         if (actualDuration > fadeOutTime) {

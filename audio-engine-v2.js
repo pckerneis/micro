@@ -220,9 +220,10 @@ class AudioEngineV2 {
      * Schedule a single step for a pattern
      */
     schedulePatternStep(patternName, pattern, stepTime) {
-        // Calculate which note in the pattern should play based on current step
+        // Calculate which note should play based on engine-relative time
         const patternStepDuration = this.stepDuration * pattern.duration;
-        const totalSteps = Math.floor(stepTime / patternStepDuration);
+        const engineTime = Math.max(0, stepTime - this.startTime);
+        const totalSteps = Math.floor(engineTime / patternStepDuration);
         const stepIndex = totalSteps % pattern.notes.length;
         
         // Only trigger if we haven't already triggered this step
@@ -241,7 +242,14 @@ class AudioEngineV2 {
      * Play a note on a specific route/instrument
      */
     playNote(routeName, note, duration, time = 0) {
-        const sourceNode = this.graphBuilder.getSourceNodeForRoute(routeName);
+        let sourceNode = this.graphBuilder.getSourceNodeForRoute(routeName);
+        // Fallback: try resolvedName from pattern definition if route alias key didn't resolve
+        if (!sourceNode) {
+            const pattern = this.patterns.get(routeName);
+            if (pattern && pattern.resolvedName) {
+                sourceNode = this.graphBuilder.getSourceNodeForRoute(pattern.resolvedName);
+            }
+        }
         
         if (!sourceNode) {
             console.warn(`No source node found for route: ${routeName}`);
