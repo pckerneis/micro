@@ -109,7 +109,7 @@ delayedArp = sine{} -> delay</div>
         <h2>Test 4: Route-only line with references</h2>
         <button class="show-graph-btn" onclick="showGraph(4)">Show Graph</button>
         <div class="code" id="test4-code">delayedArp = sine{}
-delayedArp -> STEREO</div>
+delayedArp -> MASTER</div>
         <div class="output" id="test4-output"></div>
     </div>
 
@@ -117,7 +117,7 @@ delayedArp -> STEREO</div>
         <h2>Test 5: Route-only line with inline node</h2>
         <button class="show-graph-btn" onclick="showGraph(5)">Show Graph</button>
         <div class="code" id="test5-code">delayedArp = sine{}
-delayedArp -> gain{value=0.2} -> STEREO</div>
+delayedArp -> gain{value=0.2} -> MASTER</div>
         <div class="output" id="test5-output"></div>
     </div>
 
@@ -157,8 +157,8 @@ pad = sine{
 }
 
 -- Routing
-lead -> delay -> STEREO
-pad -> reverb -> gain{value=0.3} -> STEREO
+lead -> delay -> MASTER
+pad -> reverb -> gain{value=0.3} -> MASTER
 
 -- Patterns
 @lead [70 _ 74 _] 0.25
@@ -339,16 +339,16 @@ pad -> reverb -> gain{value=0.3} -> STEREO
                 mermaid += `    ${shape}\n`;
             }
             
-            // Add STEREO output if referenced
-            let hasStereoOutput = false;
+            // Add MASTER output if referenced
+            let hasMasterOutput = false;
             for (const conn of result.connections) {
-                if (conn.to === 'STEREO') {
-                    hasStereoOutput = true;
+                if (conn.to === 'MASTER') {
+                    hasMasterOutput = true;
                     break;
                 }
             }
-            if (hasStereoOutput) {
-                mermaid += '    STEREO["STEREO OUTPUT"]\n';
+            if (hasMasterOutput) {
+                mermaid += '    MASTER["MASTER OUTPUT"]\n';
             }
             
             // Add connections
@@ -381,8 +381,8 @@ pad -> reverb -> gain{value=0.3} -> STEREO
                     mermaid += `    class ${name} effect\n`;
                 }
             }
-            if (hasStereoOutput) {
-                mermaid += '    class STEREO output\n';
+            if (hasMasterOutput) {
+                mermaid += '    class MASTER output\n';
             }
             for (const [name, pattern] of result.patterns) {
                 mermaid += `    class pattern_${name} pattern\n`;

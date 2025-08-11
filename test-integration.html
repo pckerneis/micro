@@ -86,8 +86,8 @@ lead = sine{decay=0.1, sustain=0} -> gain{value=0.5}
 pad = sine{decay=0.3, sustain=0.8}
 
 -- Routing
-lead -> STEREO
-pad -> gain{value=0.3} -> STEREO
+lead -> MASTER
+pad -> gain{value=0.3} -> MASTER
 
 -- Patterns
 @lead [70 _ 74 _] 0.25
@@ -358,16 +358,16 @@ pad -> gain{value=0.3} -> STEREO
                 mermaid += `    ${name}["${displayName}${params}"]\n`;
             }
             
-            // Add STEREO output if referenced
-            let hasStereoOutput = false;
+            // Add MASTER output if referenced
+            let hasMasterOutput = false;
             for (const conn of result.connections) {
-                if (conn.to === 'STEREO') {
-                    hasStereoOutput = true;
+                if (conn.to === 'MASTER') {
+                    hasMasterOutput = true;
                     break;
                 }
             }
-            if (hasStereoOutput) {
-                mermaid += '    STEREO["STEREO OUTPUT"]\n';
+            if (hasMasterOutput) {
+                mermaid += '    MASTER["MASTER OUTPUT"]\n';
             }
             
             // Add connections

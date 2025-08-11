@@ -27,8 +27,8 @@ class GraphParser {
         this.parseRoutingLines(lines);
         this.parsePatterns(lines);
         
-        // Add default STEREO connections for instruments without explicit routing
-        this.addDefaultStereoConnections();
+        // Add default MASTER connections for instruments without explicit routing
+        this.addDefaultMasterConnections();
         
         return {
             nodes: this.nodes,
@@ -173,8 +173,8 @@ class GraphParser {
     /**
      * Parse routing lines (route-only lines without assignment)
      * Examples:
-     * - delayedArp -> STEREO
-     * - delayedArp -> gain{value=0.2} -> STEREO
+     * - delayedArp -> MASTER
+     * - delayedArp -> gain{value=0.2} -> MASTER
      */
     parseRoutingLines(lines) {
         for (const line of lines) {
@@ -236,9 +236,9 @@ class GraphParser {
                 node.name = nodeName;
                 this.nodes.set(nodeName, node);
                 nodeNames.push(nodeName);
-            } else if (part === 'STEREO') {
-                // STEREO is not a node, just a connection target
-                nodeNames.push('STEREO');
+            } else if (part === 'MASTER') {
+                // MASTER is not a node, just a connection target
+                nodeNames.push('MASTER');
             } else {
                 // Reference to existing node
                 nodeNames.push(part);
@@ -256,7 +256,7 @@ class GraphParser {
 
     /**
      * Parse a routing line (no assignment)
-     * Example: delayedArp -> gain{value=0.2} -> STEREO
+     * Example: delayedArp -> gain{value=0.2} -> MASTER
      */
     parseRouting(line) {
         const parts = line.split('->').map(part => part.trim());
@@ -285,11 +285,11 @@ class GraphParser {
                 });
                 
                 currentNodeName = targetName;
-            } else if (targetExpression === 'STEREO') {
+            } else if (targetExpression === 'MASTER') {
                 // Connection to output
                 this.connections.push({
                     from: currentNodeName,
-                    to: 'STEREO'
+                    to: 'MASTER'
                 });
             } else {
                 // Reference to existing node
@@ -500,20 +500,22 @@ class GraphParser {
     }
 
     /**
-     * Add default STEREO connections for nodes without explicit output routing
-     * Per README: instruments should connect to STEREO by default unless explicitly routed
+     * Add default MASTER connections for nodes without explicit output routing
+     * Rule: A node is connected to MASTER only if its output is NOT explicitly routed to another node
      */
-    addDefaultStereoConnections() {
-        // Find all nodes that are sources (have outgoing connections)
-        const sourcesWithConnections = new Set();
+    addDefaultMasterConnections() {
+        // Find all nodes that have explicit outgoing connections to non-MASTER targets
+        const nodesWithExplicitRouting = new Set();
         for (const connection of this.connections) {
-            sourcesWithConnections.add(connection.from);
+            if (connection.to !== 'MASTER') {
+                nodesWithExplicitRouting.add(connection.from);
+            }
         }
         
         // Find all nodes that are targets (have incoming connections) 
         const targetsWithConnections = new Set();
         for (const connection of this.connections) {
-            if (connection.to !== 'STEREO') {
+            if (connection.to !== 'MASTER') {
                 targetsWithConnections.add(connection.to);
             }
         }
@@ -528,29 +530,36 @@ class GraphParser {
             }
         }
         
-        // Case 1: Add STEREO connections for instruments without any routing
+        // Case 1: Add MASTER connections for instruments that don't have explicit routing to other nodes
         for (const instrumentName of instrumentNodes) {
-            if (!sourcesWithConnections.has(instrumentName)) {
-                this.connections.push({
-                    from: instrumentName,
-                    to: 'STEREO'
-                });
+            if (!nodesWithExplicitRouting.has(instrumentName)) {
+                // Check if it already connects to MASTER
+                const alreadyConnectsToMaster = this.connections.some(conn => 
+                    conn.from === instrumentName && conn.to === 'MASTER'
+                );
+                
+                if (!alreadyConnectsToMaster) {
+                    this.connections.push({
+                        from: instrumentName,
+                        to: 'MASTER'
+                    });
+                }
             }
         }
         
-        // Case 2: Add STEREO connections for chain endpoints (nodes that have incoming connections but no outgoing connections to non-STEREO targets)
+        // Case 2: Add MASTER connections for chain endpoints (nodes that have incoming connections but no outgoing connections to non-MASTER targets)
         for (const [name, node] of this.nodes) {
-            // If this node receives connections but doesn't send any (except possibly to STEREO), it's a chain endpoint
-            if (targetsWithConnections.has(name) && !sourcesWithConnections.has(name)) {
-                // Check if it already connects to STEREO
-                const alreadyConnectsToStereo = this.connections.some(conn => 
-                    conn.from === name && conn.to === 'STEREO'
+            // If this node receives connections but doesn't send any to non-MASTER targets, it's a chain endpoint
+            if (targetsWithConnections.has(name) && !nodesWithExplicitRouting.has(name)) {
+                // Check if it already connects to MASTER
+                const alreadyConnectsToMaster = this.connections.some(conn => 
+                    conn.from === name && conn.to === 'MASTER'
                 );
                 
-                if (!alreadyConnectsToStereo) {
+                if (!alreadyConnectsToMaster) {
                     this.connections.push({
                         from: name,
-                        to: 'STEREO'
+                        to: 'MASTER'
                     });
                 }
             }
@@ -627,7 +636,7 @@ class NodeDefinition {
 class Connection {
     constructor(from, to) {
         this.from = from;  // Source node name
-        this.to = to;      // Target node name (or 'STEREO')
+        this.to = to;      // Target node name (or 'MASTER')
     }
 }
 

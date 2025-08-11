@@ -380,8 +380,8 @@ class MicroApp {
             mermaidCode += `    ${name}["${nodeIcon} ${readableName}<br/>${node.type}${paramText}"]${nodeStyle}\n`;
         }
         
-        // Add STEREO output node
-        mermaidCode += '    STEREO["🔊 STEREO<br/>output"]:::output\n';
+        // Add MASTER output node
+        mermaidCode += '    MASTER["🔊 MASTER<br/>output"]:::output\n';
         
         // Add connections
         for (const connection of connections) {

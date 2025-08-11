@@ -14,7 +14,7 @@ Features:
 
 **Effects Routing**: When you use the `->` operator to chain effects, only the **source** node is disconnected from output. The **final effect** in the chain remains connected to output.
 
-**STEREO Keyword**: Available for explicit reconnection if needed, but typically not required.
+**MASTER Keyword**: Available for explicit reconnection if needed, but typically not required.
 
 ### Routing Examples
 
@@ -90,7 +90,7 @@ Named effects enable:
 - **Without routing**: Instrument connects directly to output
 - **Single chain**: `instrument -> effect1 -> effect2`
 - **Parallel routing**: Multiple lines with same instrument name create parallel chains
-- **STEREO keyword**: Explicitly connects to output (usually not needed)
+- **MASTER keyword**: Explicitly connects to output (usually not needed)
 
 ## Sample Syntax Examples
 

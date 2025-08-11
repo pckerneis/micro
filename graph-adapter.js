@@ -115,8 +115,8 @@ class GraphAdapter {
         const visited = new Set();
         const feedbackConnections = [];
         
-        // If we start with STEREO, return empty chain (direct to output)
-        if (currentNode === 'STEREO') {
+        // If we start with MASTER, return empty chain (direct to output)
+        if (currentNode === 'MASTER') {
             return { chain, feedbackConnections };
         }
         
@@ -147,8 +147,8 @@ class GraphAdapter {
             
             const nextNode = connection.to;
             
-            // If we reach STEREO, we're done
-            if (nextNode === 'STEREO') {
+            // If we reach MASTER, we're done
+            if (nextNode === 'MASTER') {
                 break;
             }
             
@@ -214,19 +214,19 @@ class GraphAdapter {
             const effectChain = [];
 
             for (const target of targetChain) {
-                if (target === 'STEREO') {
+                if (target === 'MASTER') {
                     // End of chain - connects to output
                     break;
                 }
 
-                // Check if target is a named effect
-                if (this.audioEngine.namedEffects.has(target)) {
+                // Check if target is a named effect (but not anonymous nodes)
+                if (this.audioEngine.namedEffects.has(target) && !target.startsWith('_anon_')) {
                     effectChain.push({
                         type: 'named',
                         name: target
                     });
                 } else {
-                    // Target should be an inline effect node
+                    // Target should be an inline effect node (including anonymous nodes)
                     const targetNode = this.findNodeByName(target);
                     if (targetNode) {
                         effectChain.push({

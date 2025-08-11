@@ -39,11 +39,11 @@ bass = square{sustain=0, decay=0.2}
 lead = sine{decay=0.1} -> delay{time=0.75}
 
 -- Routing
-kick -> STEREO
-snare -> STEREO
-pad -> gain{value=0.6} -> STEREO
-bass -> STEREO
-lead -> STEREO
+kick -> MASTER
+snare -> MASTER
+pad -> gain{value=0.6} -> MASTER
+bass -> MASTER
+lead -> MASTER
 
 -- Create patterns
 @kick [30] 1
