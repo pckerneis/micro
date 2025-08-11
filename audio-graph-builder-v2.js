@@ -3,11 +3,18 @@
  * Takes a parsed graph and returns connected AudioNodes
  */
 class AudioGraphBuilderV2 {
-    constructor(audioContext, destination) {
+    constructor(audioContext) {
         this.audioContext = audioContext;
-        this.destination = destination;
-        this.nodeMap = new Map(); // Maps node names to AudioNode instances
-        this.routeMap = new Map(); // Maps route names to AudioNode arrays
+        this.routeMap = new Map(); // Map of route names to AudioNode arrays
+        this.activeNodeCallback = null; // Callback to register active audio nodes
+        this.nodeMap = new Map();
+    }
+
+    /**
+     * Set callback for tracking active audio nodes
+     */
+    setActiveNodeCallback(callback) {
+        this.activeNodeCallback = callback;
     }
 
     /**
@@ -140,7 +147,7 @@ class AudioGraphBuilderV2 {
         
         // Create a simple reverb using multiple delays
         const reverbGain = this.audioContext.createGain();
-        reverbGain.gain.value = 0.3;
+        reverbGain.gain.value = 0.8;
         
         const delays = [];
         const delayTimes = [0.03, 0.05, 0.07, 0.09, 0.11, 0.13];
@@ -250,8 +257,8 @@ class AudioGraphBuilderV2 {
             }
 
             if (connection.to === 'MASTER') {
-                // Connect to destination
-                sourceNode.connect(this.destination);
+                // Connect to audio context destination
+                sourceNode.connect(this.audioContext.destination);
                 console.log(`Connected ${connection.from} -> MASTER`);
             } else {
                 const targetNode = this.nodeMap.get(connection.to);
@@ -334,6 +341,7 @@ class AudioGraphBuilderV2 {
         }
 
         const startTime = this.audioContext.currentTime + time;
+        console.log({startTime})
 
         // Handle sample playback
         if (instrumentNode._instrumentType === 'sample') {
@@ -362,6 +370,11 @@ class AudioGraphBuilderV2 {
         // Connect: oscillator -> envelope -> instrument node
         oscillator.connect(envelope);
         envelope.connect(instrumentNode);
+
+        // Register active node for tracking
+        if (this.activeNodeCallback) {
+            this.activeNodeCallback(oscillator);
+        }
 
         // Start and stop
         oscillator.start(startTime);
@@ -410,6 +423,11 @@ class AudioGraphBuilderV2 {
         // Connect: buffer source -> envelope -> sample node
         bufferSource.connect(envelope);
         envelope.connect(sampleNode);
+
+        // Register active node for tracking
+        if (this.activeNodeCallback) {
+            this.activeNodeCallback(bufferSource);
+        }
 
         // Start playback
         bufferSource.start(startTime);

@@ -10,6 +10,7 @@ class AudioEngineV2 {
         this.graphBuilder = null;
         this.routeMap = new Map(); // Map of route names to AudioNode arrays
         this.patterns = new Map(); // Map of pattern names to pattern data
+        this.activeAudioNodes = new Set(); // Track active oscillators and buffer sources
         this.isPlaying = false;
         this.startTime = 0;
         this.pausedTime = 0;
@@ -32,14 +33,61 @@ class AudioEngineV2 {
             this.masterGain.connect(this.audioContext.destination);
             this.masterGain.gain.value = 0.7; // Default volume
             
-            // Create graph builder
-            this.graphBuilder = new AudioGraphBuilderV2(this.audioContext, this.masterGain);
-            
             console.log('Audio Engine V2 initialized successfully');
             return true;
         } catch (error) {
             console.error('Failed to initialize audio engine:', error);
             return false;
+        }
+    }
+
+    /**
+     * Load parsed graph and build audio routes
+     */
+    async loadGraph(parsedGraph) {
+        try {
+            // Create new graph builder
+            this.graphBuilder = new AudioGraphBuilderV2(this.audioContext);
+            
+            // Set up active node tracking callback
+            this.graphBuilder.setActiveNodeCallback((audioNode) => {
+                this.activeAudioNodes.add(audioNode);
+                
+                // Remove from tracking when node ends
+                audioNode.addEventListener('ended', () => {
+                    this.activeAudioNodes.delete(audioNode);
+                });
+            });
+            
+            // Build the audio graph
+            this.routeMap = await this.graphBuilder.buildGraph(parsedGraph);
+            
+            // Load patterns from parsed graph
+            this.loadPatterns(parsedGraph.patterns);
+            
+            console.log(`Built audio graph with ${this.routeMap.size} routes:`, Array.from(this.routeMap.keys()));
+            console.log(`Loaded ${this.patterns.size} patterns:`, Array.from(this.patterns.keys()));
+            
+            return true;
+        } catch (error) {
+            console.error('Failed to load graph:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Load patterns from parsed graph
+     */
+    loadPatterns(patterns) {
+        this.patterns.clear();
+        
+        for (const [patternName, patternData] of patterns) {
+            this.patterns.set(patternName, {
+                notes: patternData.notes,
+                duration: patternData.duration,
+                currentStep: 0,
+                lastTriggeredStep: -1
+            });
         }
     }
 
@@ -105,6 +153,9 @@ class AudioEngineV2 {
             pattern.lastTriggeredStep = -1;
         }
 
+        // Schedule the first step immediately to avoid delay
+        this.scheduleNotes();
+
         // Start scheduler
         this.schedulerInterval = setInterval(() => {
             this.scheduleNotes();
@@ -128,7 +179,30 @@ class AudioEngineV2 {
             this.schedulerInterval = null;
         }
 
+        // Immediately stop all active audio nodes
+        this.stopAllActiveNodes();
+
         console.log('Playback stopped');
+    }
+
+    /**
+     * Stop all currently active audio nodes immediately
+     */
+    stopAllActiveNodes() {
+        const currentTime = this.audioContext.currentTime;
+        
+        for (const audioNode of this.activeAudioNodes) {
+            try {
+                if (audioNode && typeof audioNode.stop === 'function') {
+                    audioNode.stop(currentTime);
+                }
+            } catch (error) {
+                // Node might already be stopped, ignore error
+            }
+        }
+        
+        // Clear the set of active nodes
+        this.activeAudioNodes.clear();
     }
 
     /**

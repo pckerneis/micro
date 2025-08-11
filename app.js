@@ -111,10 +111,16 @@ class MicroApp {
         });
     }
 
-    executeCode() {
+    async executeCode() {
         if (!this.isInitialized) return;
 
         const code = this.editor.getValue();
+        
+        if (!code.trim()) {
+            this.log('No code to execute', 'warning');
+            return;
+        }
+
         this.log('Parsing code...', 'info');
         
         // Step 1: Parse code with GraphParser
@@ -136,28 +142,25 @@ class MicroApp {
         
         // Step 2: Apply parsed graph to audio engine
         this.log('Building audio graph...', 'info');
-        const integrationResult = this.audioEngine.applyParsedGraph(parsedGraph);
-        
-        if (integrationResult.success) {
+        try {
+            await this.audioEngine.loadGraph(parsedGraph);
             this.log('Audio graph built successfully!', 'success');
             const routes = this.audioEngine.getRoutes();
             const patterns = this.audioEngine.getPatterns();
             this.log(`Built ${Object.keys(routes).length} routes, ${Object.keys(patterns).length} patterns`, 'info');
-        } else {
-            integrationResult.errors.forEach(error => {
-                this.log(error, 'error');
-            });
+        } catch (error) {
+            this.log(`Failed to build audio graph: ${error.message}`, 'error');
         }
         
         // Save code to localStorage
         localStorage.setItem('micro-code', code);
     }
 
-    saveCode() {
+    async saveCode() {
         const code = this.editor.getValue();
         localStorage.setItem('micro-code', code);
         this.log('Code saved! Parsing...', 'info');
-        this.executeCode();
+        await this.executeCode();
     }
 
     autoSaveCode() {
