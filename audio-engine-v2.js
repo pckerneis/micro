@@ -216,34 +216,11 @@ class AudioEngineV2 {
     }
 
     /**
-     * Set master volume (0-100)
-     */
-    setMasterGain(volume) {
-        if (this.masterGain) {
-            const gain = Math.max(0, Math.min(100, volume)) / 100;
-            this.masterGain.gain.value = gain;
-        }
-    }
-
-    /**
      * Set BPM
      */
     setBPM(bpm) {
         this.bpm = Math.max(60, Math.min(200, bpm));
         this.stepDuration = 60 / this.bpm;
-    }
-
-    /**
-     * Get current playback state
-     */
-    getState() {
-        return {
-            isPlaying: this.isPlaying,
-            currentStep: this.currentStep,
-            bpm: this.bpm,
-            routeCount: this.routeMap.size,
-            patternCount: this.patterns.size
-        };
     }
 
     /**

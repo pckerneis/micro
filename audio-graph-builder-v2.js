@@ -172,10 +172,12 @@ class AudioGraphBuilderV2 {
             case 'lowpass':
                 filter.type = 'lowpass';
                 filter.frequency.value = parameters.cutoff ?? 1000;
+                filter.Q.value = parameters.q ?? 1.0;
                 break;
             case 'highpass':
                 filter.type = 'highpass';
                 filter.frequency.value = parameters.cutoff ?? 1000;
+                filter.Q.value = parameters.q ?? 1.0;
                 break;
             case 'bandpass':
                 filter.type = 'bandpass';
