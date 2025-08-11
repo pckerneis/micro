@@ -39,8 +39,6 @@ class UnifiedInstrument {
      * Initialize as oscillator instrument
      */
     initOscillator(config) {
-
-        console.log('init osc with config', config)
         this.instrumentType = 'oscillator';
         this.oscillatorType = config.oscillatorType || 'sine';
         this.envelope = {
@@ -144,6 +142,16 @@ class UnifiedInstrument {
     }
 
     /**
+     * Set effect chains for this instrument
+     * @param {Array<Array>} effectChains - Array of effect chain arrays
+     * @param {Array} feedbackConnections - Array of feedback connection definitions
+     */
+    setEffectChains(effectChains, feedbackConnections = []) {
+        this.effectChains = effectChains || [];
+        this.feedbackConnections = feedbackConnections || [];
+    }
+
+    /**
      * Process effect chains for the given source node
      */
     processEffectChains(sourceNode) {
@@ -154,8 +162,8 @@ class UnifiedInstrument {
             // Single effect chain
             this.graphBuilder.buildEffectChain(sourceNode, this.effectChains[0], this.destination);
         } else {
-            // Multiple parallel effect chains
-            this.graphBuilder.buildParallelChains(sourceNode, this.effectChains, this.destination);
+            // Multiple parallel effect chains with feedback support
+            this.graphBuilder.buildParallelChains(sourceNode, this.effectChains, this.destination, this.feedbackConnections);
         }
     }
 

@@ -70,15 +70,15 @@ class GraphAdapter {
         
         // Build all parallel chains for each instrument
         for (const instrumentName of instrumentNodes) {
-            const chains = this.buildAllChainsFromInstrument(instrumentName, connections);
-            if (chains.length > 0) {
-                instrumentChains.set(instrumentName, chains);
+            const result = this.buildAllChainsFromInstrument(instrumentName, connections);
+            if (result.chains.length > 0) {
+                instrumentChains.set(instrumentName, result);
             }
         }
 
         // Apply routing chains to instruments
-        for (const [instrumentName, chains] of instrumentChains) {
-            this.applyRoutingChains(instrumentName, chains);
+        for (const [instrumentName, result] of instrumentChains) {
+            this.applyRoutingChains(instrumentName, result.chains, result.feedbackConnections);
         }
     }
     
@@ -87,21 +87,23 @@ class GraphAdapter {
      */
     buildAllChainsFromInstrument(startNode, connections) {
         const chains = [];
+        const allFeedbackConnections = [];
         
         // Find all direct connections from the instrument
         const directConnections = connections.filter(conn => conn.from === startNode);
         
         if (directConnections.length === 0) {
-            return chains;
+            return { chains, feedbackConnections: allFeedbackConnections };
         }
         
         // Build a complete chain for each direct connection
         for (const connection of directConnections) {
-            const chain = this.buildSingleChain(connection.to, connections);
-            chains.push(chain);
+            const result = this.buildSingleChain(connection.to, connections);
+            chains.push(result.chain);
+            allFeedbackConnections.push(...result.feedbackConnections);
         }
         
-        return chains;
+        return { chains, feedbackConnections: allFeedbackConnections };
     }
     
     /**
@@ -111,18 +113,28 @@ class GraphAdapter {
         const chain = [];
         let currentNode = startNode;
         const visited = new Set();
+        const feedbackConnections = [];
         
         // If we start with STEREO, return empty chain (direct to output)
         if (currentNode === 'STEREO') {
-            return chain;
+            return { chain, feedbackConnections };
         }
         
         // Add the starting node to the chain
         chain.push(currentNode);
         
         while (true) {
-            // Prevent infinite loops
+            // Check for cycles (feedback loops)
             if (visited.has(currentNode)) {
+                // This is a feedback connection - record it and break
+                const connection = connections.find(conn => conn.from === currentNode);
+                if (connection) {
+                    feedbackConnections.push({
+                        from: currentNode,
+                        to: connection.to,
+                        type: 'feedback'
+                    });
+                }
                 break;
             }
             visited.add(currentNode);
@@ -145,7 +157,7 @@ class GraphAdapter {
             currentNode = nextNode;
         }
         
-        return chain;
+        return { chain, feedbackConnections };
     }
 
     /**
@@ -189,7 +201,7 @@ class GraphAdapter {
      * Apply a routing chain to an instrument
      * Converts graph connections into multiple effect chains
      */
-    applyRoutingChains(instrumentName, targetChains) {
+    applyRoutingChains(instrumentName, targetChains, feedbackConnections = []) {
         if (!this.audioEngine.instruments.has(instrumentName)) {
             console.warn(`Instrument ${instrumentName} not found for routing`);
             return;
@@ -230,7 +242,7 @@ class GraphAdapter {
 
         // Apply all effect chains to the instrument
         if (effectChains.length > 0) {
-            this.audioEngine.setInstrumentEffectChains(instrumentName, effectChains);
+            this.audioEngine.setInstrumentEffectChains(instrumentName, effectChains, feedbackConnections);
         }
     }
 

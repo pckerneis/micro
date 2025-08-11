@@ -108,26 +108,108 @@ class AudioGraphBuilder {
     }
 
     /**
+     * Build a complete effect chain and return both the final node and all created nodes
+     * @param {AudioNode} sourceNode - Input audio node
+     * @param {Array} effectChain - Array of effect definitions
+     * @param {AudioNode} outputNode - Final destination (optional, defaults to this.destination)
+     * @returns {Object} Object with finalNode and nodes Map
+     */
+    buildEffectChainWithNodes(sourceNode, effectChain, outputNode = this.destination) {
+        const nodes = new Map();
+        
+        if (!effectChain || effectChain.length === 0) {
+            // No effects - connect directly to output
+            sourceNode.connect(outputNode);
+            return { finalNode: sourceNode, nodes };
+        }
+
+        let currentNode = sourceNode;
+
+        // Process each effect in the chain
+        for (let i = 0; i < effectChain.length; i++) {
+            const effect = effectChain[i];
+            const effectNode = this.createEffectNode(effect);
+            if (effectNode) {
+                currentNode.connect(effectNode);
+                currentNode = effectNode;
+                
+                // Store node with a unique identifier for feedback connections
+                const nodeId = `effect_${i}_${effect.type}`;
+                nodes.set(nodeId, effectNode);
+                
+                // Also store by effect name if it's a named effect
+                if (effect.name) {
+                    nodes.set(effect.name, effectNode);
+                }
+            }
+        }
+
+        // Connect final node to output
+        currentNode.connect(outputNode);
+        return { finalNode: currentNode, nodes };
+    }
+
+    /**
      * Build multiple parallel effect chains from a single source
      * @param {AudioNode} sourceNode - Input audio node
      * @param {Array} effectChains - Array of effect chain arrays
      * @param {AudioNode} outputNode - Final destination
+     * @param {Array} feedbackConnections - Array of feedback connection definitions
      */
-    buildParallelChains(sourceNode, effectChains, outputNode = this.destination) {
+    buildParallelChains(sourceNode, effectChains, outputNode = this.destination, feedbackConnections = []) {
         if (!effectChains || effectChains.length === 0) {
             sourceNode.connect(outputNode);
             return;
         }
 
+        // Store created effect nodes for feedback connections
+        const effectNodes = new Map();
+
         // Build each parallel chain
-        effectChains.forEach(chain => {
+        const chainResults = effectChains.map((chain, index) => {
             // Create a gain node to split the signal for this chain
             const splitter = this.audioContext.createGain();
             sourceNode.connect(splitter);
             
-            // Build the effect chain from the splitter
-            this.buildEffectChain(splitter, chain, outputNode);
+            // Build the effect chain from the splitter and collect nodes
+            const result = this.buildEffectChainWithNodes(splitter, chain, outputNode);
+            
+            // Store nodes for feedback connections
+            result.nodes.forEach((node, name) => {
+                effectNodes.set(name, node);
+            });
+            
+            return result;
         });
+
+        // Process feedback connections after all chains are built
+        this.processFeedbackConnections(feedbackConnections, effectNodes);
+    }
+
+    /**
+     * Process feedback connections to create audio feedback loops
+     * @param {Array} feedbackConnections - Array of feedback connection definitions
+     * @param {Map} effectNodes - Map of effect node names to AudioNode instances
+     */
+    processFeedbackConnections(feedbackConnections, effectNodes) {
+        for (const feedback of feedbackConnections) {
+            const fromNode = effectNodes.get(feedback.from);
+            const toNode = effectNodes.get(feedback.to);
+            
+            if (fromNode && toNode) {
+                // Create feedback connection
+                // Note: In Web Audio API, feedback loops are automatically handled
+                // as long as there's at least one DelayNode in the loop to prevent
+                // immediate feedback that could cause issues
+                try {
+                    fromNode.connect(toNode);
+                } catch (error) {
+                    console.warn(`Failed to create feedback connection ${feedback.from} -> ${feedback.to}:`, error);
+                }
+            } else {
+                console.warn(`Feedback connection failed - nodes not found: ${feedback.from} -> ${feedback.to}`);
+            }
+        }
     }
 
     /**
@@ -159,8 +241,6 @@ class AudioGraphBuilder {
         const now = this.audioContext.currentTime;
         const { attack, decay, sustain, release } = envelope;
 
-        console.log(envelope);
-        
         gainParam.setValueAtTime(0, now);
         gainParam.linearRampToValueAtTime(1, now + attack);
         gainParam.linearRampToValueAtTime(sustain, now + attack + decay);
