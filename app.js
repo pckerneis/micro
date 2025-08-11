@@ -1,6 +1,6 @@
 class MicroApp {
     constructor() {
-        this.audioEngine = new AudioEngine();
+        this.audioEngine = new SimplifiedAudioEngine();
         this.parser = new GraphParser();
         this.editor = null;
         this.isInitialized = false;
@@ -200,8 +200,6 @@ class MicroApp {
         if (!this.isInitialized || !this.audioEngine.masterGain) return;
         
         this.audioEngine.masterGain.gain.value = volumePercent / 100;
-        
-        this.log(`Master volume: ${volumePercent}%`, 'info');
     }
 
     log(message, type = 'info') {

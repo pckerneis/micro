@@ -142,15 +142,15 @@ class GraphAdapter {
         if (node.type === 'sample') {
             this.audioEngine.addInstrument(name, 'sample', {
                 url: node.parameters.url || null,
-                gain: node.parameters.gain || 1.0
+                gain: node.parameters.gain ?? 1.0
             });
         } else {
             // Oscillator instruments
             this.audioEngine.addInstrument(name, node.type, {
-                attack: node.parameters.attack || 0.01,
-                decay: node.parameters.decay || 0.3,
-                sustain: node.parameters.sustain || 0.7,
-                release: node.parameters.release || 0.5
+                attack: node.parameters.attack ?? 0.01,
+                decay: node.parameters.decay ?? 0.3,
+                sustain: node.parameters.sustain ?? 0.7,
+                release: node.parameters.release ?? 0.5
             });
         }
     }
