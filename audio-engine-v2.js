@@ -11,7 +11,8 @@ class AudioEngineV2 {
         this.routeMap = new Map(); // Map of route names to AudioNode arrays
         this.patterns = new Map(); // Map of pattern names to pattern data
         this.isPlaying = false;
-        this.currentTime = 0;
+        this.startTime = 0;
+        this.pausedTime = 0;
         this.bpm = 120;
         this.stepDuration = 60 / this.bpm; // Duration of one step in seconds
         this.schedulerInterval = null;
@@ -92,6 +93,7 @@ class AudioEngineV2 {
         }
 
         this.isPlaying = true;
+        this.startTime = this.audioContext.currentTime - this.pausedTime;
         this.nextStepTime = this.audioContext.currentTime;
         this.currentStep = 0;
         
@@ -113,6 +115,10 @@ class AudioEngineV2 {
      * Stop playback
      */
     stop() {
+        if (this.isPlaying) {
+            this.pausedTime = this.audioContext.currentTime - this.startTime;
+        }
+        
         this.isPlaying = false;
         
         if (this.schedulerInterval) {
@@ -121,6 +127,25 @@ class AudioEngineV2 {
         }
 
         console.log('Playback stopped');
+    }
+
+    /**
+     * Get current playback time in seconds
+     */
+    getCurrentTime() {
+        if (this.isPlaying) {
+            return this.audioContext.currentTime - this.startTime;
+        } else {
+            return this.pausedTime;
+        }
+    }
+
+    /**
+     * Reset playback time to zero
+     */
+    resetTime() {
+        this.startTime = this.audioContext.currentTime;
+        this.pausedTime = 0;
     }
 
     /**

@@ -90,6 +90,9 @@ class MicroApp {
         stopBtn.addEventListener('click', () => this.stop());
         graphBtn.addEventListener('click', () => this.showGraph());
         
+        // Start time display update interval
+        this.startTimeDisplay();
+        
         // Master gain control
         masterGainSlider.addEventListener('input', (e) => {
             const volume = parseInt(e.target.value);
@@ -184,12 +187,10 @@ class MicroApp {
     }
 
     stop() {
+        if (!this.isInitialized) return;
         this.audioEngine.stop();
         this.updateStatus('Stopped');
         this.log('Playback stopped', 'info');
-        
-        // Update UI
-        document.getElementById('playBtn').textContent = '▶ Play';
     }
 
     togglePlayback() {
@@ -204,6 +205,35 @@ class MicroApp {
         if (!this.isInitialized || !this.audioEngine.masterGain) return;
         
         this.audioEngine.masterGain.gain.value = volumePercent / 100;
+    }
+
+    /**
+     * Start the time display update interval
+     */
+    startTimeDisplay() {
+        // Update time display every 100ms
+        setInterval(() => {
+            this.updateTimeDisplay();
+        }, 100);
+    }
+
+    /**
+     * Update the time display in the UI
+     */
+    updateTimeDisplay() {
+        if (!this.isInitialized) return;
+        
+        const currentTime = this.audioEngine.getCurrentTime();
+        const minutes = Math.floor(currentTime / 60);
+        const seconds = Math.floor(currentTime % 60);
+        const milliseconds = Math.floor((currentTime % 1) * 1000);
+        
+        const timeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
+        
+        const timeElement = document.getElementById('currentTime');
+        if (timeElement) {
+            timeElement.textContent = timeString;
+        }
     }
 
     log(message, type = 'info') {
