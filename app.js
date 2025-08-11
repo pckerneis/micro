@@ -1,6 +1,6 @@
 class MicroApp {
     constructor() {
-        this.audioEngine = new AudioEngine();
+        this.audioEngine = new SimplifiedAudioEngine();
         this.parser = new GraphParser();
         this.editor = null;
         this.isInitialized = false;
