@@ -3,8 +3,9 @@
  * Parses the enhanced curly-brace syntax and outputs an audio graph
  * Decoupled from the audio engine for better separation of concerns
  */
+import {OUTPUT_KEYWORD} from './constants.mjs';
 
-class GraphParser {
+export class GraphParser {
     constructor() {
         this.nodes = new Map();           // name -> NodeDefinition
         this.connections = [];            // array of Connection objects
@@ -167,8 +168,8 @@ class GraphParser {
     /**
      * Parse routing lines (route-only lines without assignment)
      * Examples:
-     * - delayedArp -> MASTER
-     * - delayedArp -> gain{value=0.2} -> MASTER
+     * - delayedArp -> OUT
+     * - delayedArp -> gain{value=0.2} -> OUT
      */
     parseRoutingLines(lines) {
         for (const line of lines) {
@@ -214,9 +215,9 @@ class GraphParser {
                 node.name = nodeName;
                 this.nodes.set(nodeName, node);
                 nodeNames.push(nodeName);
-            } else if (part === 'MASTER') {
-                // MASTER is not a node, just a connection target
-                nodeNames.push('MASTER');
+            } else if (part === OUTPUT_KEYWORD) {
+                // OUT is not a node, just a connection target
+                nodeNames.push(OUTPUT_KEYWORD);
             } else {
                 // Reference to existing node or route
                 nodeNames.push(part);
@@ -247,7 +248,7 @@ class GraphParser {
 
     /**
      * Parse a routing line (no assignment)
-     * Example: delayedArp -> gain{value=0.2} -> MASTER
+     * Example: delayedArp -> gain{value=0.2} -> OUT
      */
     parseRouting(line) {
         const parts = line.split('->').map(part => part.trim());
@@ -275,11 +276,11 @@ class GraphParser {
                 });
                 
                 currentNodeName = targetName;
-            } else if (targetExpression === 'MASTER') {
+            } else if (targetExpression === OUTPUT_KEYWORD) {
                 // Connection to output
                 this.connections.push({
                     from: currentNodeName,
-                    to: 'MASTER'
+                    to: OUTPUT_KEYWORD
                 });
             } else {
                 // Reference to existing node or route

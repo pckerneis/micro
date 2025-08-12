@@ -1,9 +1,10 @@
+import {AudioGraphBuilder} from './audio-graph-builder.mjs';
+
 /**
- * Simplified Audio Engine V2
  * Focuses on scheduling and pattern playback
- * Delegates audio graph building to AudioGraphBuilderV2
+ * Delegates audio graph building to AudioGraphBuilder
  */
-class AudioEngineV2 {
+export class AudioEngine {
     constructor() {
         this.audioContext = null;
         this.masterGain = null;
@@ -53,7 +54,7 @@ class AudioEngineV2 {
     async loadGraph(parsedGraph) {
         try {
             // Create new graph builder with master gain as output
-            this.graphBuilder = new AudioGraphBuilderV2(this.audioContext, this.masterGain);
+            this.graphBuilder = new AudioGraphBuilder(this.audioContext, this.masterGain);
             
             // Set up active node tracking callback
             this.graphBuilder.setActiveNodeCallback((audioNode) => {
@@ -311,7 +312,3 @@ class AudioEngineV2 {
     }
 }
 
-// Export for use in other modules
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = AudioEngineV2;
-}

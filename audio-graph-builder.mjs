@@ -1,8 +1,10 @@
+import {OUTPUT_KEYWORD} from './constants.mjs';
+
 /**
  * Simple Audio Graph Builder
  * Takes a parsed graph and returns connected AudioNodes
  */
-class AudioGraphBuilderV2 {
+export class AudioGraphBuilder {
     constructor(audioContext, outputNode) {
         this.audioContext = audioContext;
         this.outputNode = outputNode || audioContext.destination;
@@ -301,10 +303,10 @@ class AudioGraphBuilderV2 {
                 continue;
             }
 
-            if (connection.to === 'MASTER') {
+            if (connection.to === OUTPUT_KEYWORD) {
                 // Connect to provided output node (e.g., master gain)
                 sourceNode.connect(this.outputNode);
-                console.log(`Connected ${connection.from} -> MASTER`);
+                console.log(`Connected ${connection.from} -> OUT`);
             } else {
                 const targetNode = this.nodeMap.get(connection.to);
                 if (targetNode) {
@@ -344,7 +346,7 @@ class AudioGraphBuilderV2 {
 
             // Include other nodes, resolving nested route references where possible
             for (const nodeName of routeDefinition.allNodes) {
-                if (nodeName === 'MASTER') continue;
+                if (nodeName === OUTPUT_KEYWORD) continue;
                 const resolvedName = this.resolveFirstNodeName(nodeName, namedRoutes);
                 const audioNode = this.nodeMap.get(resolvedName);
                 if (audioNode) {
@@ -533,5 +535,5 @@ class AudioGraphBuilderV2 {
 
 // Export for use in other modules
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = AudioGraphBuilderV2;
+    module.exports = AudioGraphBuilder;
 }

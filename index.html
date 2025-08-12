@@ -33,22 +33,22 @@
                 <textarea id="editor"># Welcome to Micro!
 # This is a minimalistic livecoding environment for music
 
-# Define named routes
-delay = delay{time=0.33}
-lead = sine{decay=0.1, sustain=0} -> gain{level=0.5}
-delayedArp = sine{} -> delay
-
-# Routing - explicit MASTER connections required
-delayedArp -> MASTER
-delayedArp -> reverb{
-  roomSize=12
-  tail=3.0
-} -> delay
+# Define instruments and FX
+kick = sample{gain=1, url='https://cdn.freesound.org/previews/584/584792_11532701-lq.mp3'} -> OUT
+snare = sample{gain=1, url='https://cdn.freesound.org/previews/13/13751_32468-lq.mp3'} -> OUT
+del = delay{time=0.25}
+del -> gain{level=-8dB} -> del -> OUT
+lead = sine{decay=0.1, sustain=0}
+lead -> gain{level=-16dB} -> del
+lead -> gain{level=-8dB} -> OUT
+bass = square{} -> lowpass{cutoff=200} -> gain{level=-8dB} -> OUT
 
 # Create patterns
-@lead [70] 1
-@lead [70 77 74 76 72 81] 1/8
-@snare [_ 46] 1</textarea>
+@kick [60] 1
+@snare [_ 60] 1
+@bass [_ 34] 1/2
+@lead [70 77 74 76 72 81 72] 1/2
+</textarea>
             </div>
             
             <div class="output-container">
@@ -74,9 +74,6 @@ delayedArp -> reverb{
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
-    <script src="graph-parser.js"></script>
-    <script src="audio-graph-builder-v2.js"></script>
-    <script src="audio-engine-v2.js"></script>
-    <script src="app.js"></script>
+    <script src="./app.mjs" type="module"></script>
 </body>
 </html>

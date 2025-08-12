@@ -1,6 +1,9 @@
+import {AudioEngine} from './audio-engine.mjs';
+import {GraphParser} from './graph-parser.mjs';
+
 class MicroApp {
     constructor() {
-        this.audioEngine = new AudioEngineV2();
+        this.audioEngine = new AudioEngine();
         this.parser = new GraphParser();
         this.editor = null;
         this.isInitialized = false;
@@ -392,8 +395,8 @@ class MicroApp {
             mermaidCode += `    ${name}["${nodeIcon} ${readableName}<br/>${node.type}${paramText}"]${nodeStyle}\n`;
         }
         
-        // Add MASTER output node
-        mermaidCode += '    MASTER["🔊 MASTER<br/>output"]:::output\n';
+        // Add OUT output node
+        mermaidCode += '    OUT["🔊 OUT<br/>output"]:::output\n';
         
         // Add connections
         for (const connection of connections) {
