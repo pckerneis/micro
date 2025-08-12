@@ -143,6 +143,9 @@ export class AudioGraphBuilder {
             sustain: parameters.sustain ?? 0.7,
             release: parameters.release ?? 0.5
         };
+        // Keep raw params as well (for modulators: frequency, level, etc.)
+        instrumentGain._rawParams = { ...parameters };
+        instrumentGain._paramModulations = {}; // paramName -> [AudioNode]
         
         return instrumentGain;
     }
@@ -252,6 +255,8 @@ export class AudioGraphBuilder {
         sampleGain._sampleUrl = parameters.url;
         sampleGain._buffer = null;
         sampleGain._isLoading = false;
+        sampleGain._rawParams = { ...parameters };
+        sampleGain._paramModulations = {};
         
         // Load the audio buffer if URL is provided
         if (parameters.url) {
@@ -310,12 +315,88 @@ export class AudioGraphBuilder {
             } else {
                 const targetNode = this.nodeMap.get(connection.to);
                 if (targetNode) {
-                    sourceNode.connect(targetNode);
-                    console.log(`Connected ${connection.from} -> ${connection.to}`);
+                    if (connection.toParam) {
+                        // Handle AudioParam connections
+                        this.connectToParam(sourceNode, targetNode, connection.toParam);
+                        console.log(`Connected ${connection.from} -> ${connection.to}.${connection.toParam}`);
+                    } else {
+                        sourceNode.connect(targetNode);
+                        console.log(`Connected ${connection.from} -> ${connection.to}`);
+                    }
                 } else {
                     console.warn(`Target node not found: ${connection.to}`);
                 }
             }
+        }
+    }
+
+    /**
+     * Ensure instrument node has modulation list for a parameter
+     */
+    ensureParamModList(instrumentNode, paramName) {
+        if (!instrumentNode._paramModulations) instrumentNode._paramModulations = {};
+        if (!instrumentNode._paramModulations[paramName]) instrumentNode._paramModulations[paramName] = [];
+        return instrumentNode._paramModulations[paramName];
+    }
+
+    /**
+     * Create or reuse a continuous oscillator modulator from an instrument node definition
+     * Used when an instrument node is used as a modulation source rather than a note-triggered instrument.
+     */
+    getOrCreateContinuousModulator(sourceInstrumentNode) {
+        if (sourceInstrumentNode._continuousModulatorOutput) return sourceInstrumentNode._continuousModulatorOutput;
+        const osc = this.audioContext.createOscillator();
+        osc.type = sourceInstrumentNode._instrumentType || 'sine';
+        // Frequency from raw params or a reasonable LFO default
+        const rp = sourceInstrumentNode._rawParams || {};
+        const freq = (typeof rp.frequency === 'number') ? rp.frequency : 2.0;
+        osc.frequency.value = freq;
+        // Optional depth/level scaling
+        const levelParam = rp.level ?? rp.gain ?? rp.amount;
+        const gain = this.audioContext.createGain();
+        gain.gain.value = this.resolveGainValue(levelParam, 1.0);
+        osc.connect(gain);
+        try { osc.start(); } catch (e) { /* already started */ }
+        sourceInstrumentNode._continuousOscillator = osc;
+        sourceInstrumentNode._continuousModGain = gain;
+        sourceInstrumentNode._continuousModulatorOutput = gain;
+        // Track active node if callback present
+        if (this.activeNodeCallback) {
+            this.activeNodeCallback(osc);
+        }
+        return gain;
+    }
+
+    /**
+     * Connect source to a target AudioParam or store for instrument per-note application
+     */
+    connectToParam(sourceNode, targetNode, paramName) {
+        // If target is an instrument wrapper (Gain), defer to per-note modulation
+        if (targetNode._instrumentType) {
+            const mods = this.ensureParamModList(targetNode, paramName);
+            let sourceOut = sourceNode;
+            if (sourceNode._instrumentType) {
+                // Use a continuous oscillator from the instrument def as modulator
+                sourceOut = this.getOrCreateContinuousModulator(sourceNode);
+            }
+            mods.push(sourceOut);
+            return;
+        }
+
+        // Non-instrument target: connect directly to the AudioParam if present
+        const targetParam = targetNode && targetNode[paramName];
+        if (targetParam && typeof targetParam.setValueAtTime === 'function') {
+            let sourceOut = sourceNode;
+            if (sourceNode._instrumentType) {
+                sourceOut = this.getOrCreateContinuousModulator(sourceNode);
+            }
+            try {
+                sourceOut.connect(targetParam);
+            } catch (e) {
+                console.warn(`Failed to connect to param ${paramName} on target`, e);
+            }
+        } else {
+            console.warn(`Target parameter not found or not an AudioParam: ${paramName}`);
         }
     }
 
@@ -454,6 +535,19 @@ export class AudioGraphBuilder {
         oscillator.connect(envelope);
         envelope.connect(instrumentNode);
 
+        // Apply per-note param modulations (e.g., FM/AM)
+        const mods = instrumentNode._paramModulations || {};
+        if (mods.frequency && oscillator.frequency) {
+            for (const modNode of mods.frequency) {
+                try { modNode.connect(oscillator.frequency); } catch (e) { /* ignore */ }
+            }
+        }
+        if (mods.detune && oscillator.detune) {
+            for (const modNode of mods.detune) {
+                try { modNode.connect(oscillator.detune); } catch (e) { /* ignore */ }
+            }
+        }
+
         // Register active node for tracking
         if (this.activeNodeCallback) {
             this.activeNodeCallback(oscillator);
@@ -517,6 +611,14 @@ export class AudioGraphBuilder {
         // Connect: buffer source -> envelope -> sample node
         bufferSource.connect(envelope);
         envelope.connect(sampleNode);
+
+        // Apply per-note param modulations (playbackRate)
+        const mods = sampleNode._paramModulations || {};
+        if (mods.playbackRate && bufferSource.playbackRate) {
+            for (const modNode of mods.playbackRate) {
+                try { modNode.connect(bufferSource.playbackRate); } catch (e) { /* ignore */ }
+            }
+        }
 
         // Register active node for tracking
         if (this.activeNodeCallback) {

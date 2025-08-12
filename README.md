@@ -56,6 +56,45 @@ lead -> gain(0.7)
 
 This creates two parallel paths: one with delay and low gain, another with just higher gain. Only the last effect in each chain connects to the output.
 
+## Modulating AudioParams (FM/AM/LFO)
+
+You can connect any node output to another node's AudioParam using the index/param syntax:
+
+- `routeOrName[index].param`
+- Examples of params: `gain`, `frequency`, `detune`, `Q`, `playbackRate`, etc.
+- When the target is an instrument (e.g., `sine{}`), modulation is applied per-note to the underlying oscillator or sample source.
+
+### Examples
+
+```
+# FM: modulator -> carrier.frequency
+fm = sine{frequency=5, level=200}      # LFO or FM source (continuous)
+lead = sine{decay=0.1, sustain=0}
+fm -> lead.frequency
+lead -> OUT
+@lead [70 72 74 76] 1/2
+
+# Routing to a param inside a named route using index
+chain = sine{} -> lowpass{cutoff=800} -> gain{level=-6dB}
+lfo = sine{frequency=2, level=300}
+lfo -> chain[1].frequency  # chain[1] is lowpass in this route
+chain -> OUT
+@chain [69] 1
+
+# AM: modulator -> gain.gain
+amp = gain{level=0.5}
+lfo2 = sine{frequency=4, level=0.5}
+lfo2 -> amp.gain
+saw = sawtooth{}
+saw -> amp -> OUT
+@saw [52 55 59 62] 1/2
+```
+
+Notes:
+- Connecting FROM a parameter (e.g., `a.frequency -> b`) is not supported.
+- When using an instrument as a modulator source, a continuous oscillator is created from its parameters (`frequency`, `level`) to drive the target AudioParam.
+- For samples, modulation to `playbackRate` is supported.
+
 ## Named Effects and Modular Routing
 
 Create reusable effect modules that can be shared between instruments:

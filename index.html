@@ -33,14 +33,23 @@
                 <textarea id="editor"># Welcome to Micro!
 # This is a minimalistic livecoding environment for music
 
-# Define instruments and FX
+# ——— Basics ———
 kick = sample{gain=1, url='https://cdn.freesound.org/previews/584/584792_11532701-lq.mp3'} -> OUT
 snare = sample{gain=1, url='https://cdn.freesound.org/previews/13/13751_32468-lq.mp3'} -> OUT
-del = delay{time=0.25}
-del -> gain{level=-8dB} -> del -> OUT
+delay = delay{time=0.75} -> OUT
+
+# Lead instrument
 lead = sine{decay=0.1, sustain=0}
-lead -> gain{level=-16dB} -> del
-lead -> gain{level=-8dB} -> OUT
+
+# FM/LFO example: connect a modulator to an AudioParam
+# The following uses the new param routing syntax: target.param
+fm = sine{frequency=5, level=120}   # continuous LFO/FM source
+fm -> lead.frequency                # modulate lead oscillator frequency
+
+# Route lead to output
+lead -> gain{level=-6dB} -> OUT
+
+# Bass with filter
 bass = square{} -> lowpass{cutoff=200} -> gain{level=-8dB} -> OUT
 
 # Create patterns

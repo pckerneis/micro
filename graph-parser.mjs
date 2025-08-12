@@ -224,15 +224,24 @@ export class GraphParser {
             }
         }
 
-        // Create connections between nodes, resolving route references
+        // Create connections between nodes, resolving route references and param targets
         for (let i = 0; i < nodeNames.length - 1; i++) {
-            const fromNode = nodeNames[i];
-            const toNode = nodeNames[i + 1];
+            const rawFrom = nodeNames[i];
+            const rawTo = nodeNames[i + 1];
             
-            // Resolve route references for connections
-            const resolvedTo = this.resolveNodeOrRoute(toNode, 'target');
-            
-            this.connections.push({ from: fromNode, to: resolvedTo });
+            const resolvedFrom = this.resolveNodeOrRoute(rawFrom, 'source');
+            const refTo = this.parseReferenceExpression(rawTo);
+            if (refTo) {
+                const resolvedTo = this.resolveNodeOrRouteWithIndex(refTo.name, refTo.index, 'target');
+                if (refTo.param) {
+                    this.connections.push({ from: resolvedFrom, to: resolvedTo, toParam: refTo.param });
+                } else {
+                    this.connections.push({ from: resolvedFrom, to: resolvedTo });
+                }
+            } else {
+                const resolvedTo = this.resolveNodeOrRoute(rawTo, 'target');
+                this.connections.push({ from: resolvedFrom, to: resolvedTo });
+            }
         }
 
         // Create named route definition
@@ -258,7 +267,14 @@ export class GraphParser {
             return;
         }
 
-        let currentNodeName = this.resolveNodeOrRoute(parts[0], 'source');
+        // Support indexing on the source (e.g., route[1]) but not source params
+        const sourceRef = this.parseReferenceExpression(parts[0]);
+        if (sourceRef && sourceRef.param) {
+            this.errors.push(`Connecting FROM a parameter is not supported: ${parts[0]}`);
+        }
+        let currentNodeName = sourceRef
+            ? this.resolveNodeOrRouteWithIndex(sourceRef.name, sourceRef.index, 'source')
+            : this.resolveNodeOrRoute(parts[0], 'source');
         
         for (let i = 1; i < parts.length; i++) {
             const targetExpression = parts[i];
@@ -283,13 +299,34 @@ export class GraphParser {
                     to: OUTPUT_KEYWORD
                 });
             } else {
-                // Reference to existing node or route
-                const resolvedTarget = this.resolveNodeOrRoute(targetExpression, 'target');
-                this.connections.push({
-                    from: currentNodeName,
-                    to: resolvedTarget
-                });
-                currentNodeName = resolvedTarget;
+                // Reference to existing node/route, possibly with [index] and .param
+                const ref = this.parseReferenceExpression(targetExpression);
+                if (ref) {
+                    const resolvedTarget = this.resolveNodeOrRouteWithIndex(ref.name, ref.index, 'target');
+                    if (ref.param) {
+                        this.connections.push({
+                            from: currentNodeName,
+                            to: resolvedTarget,
+                            toParam: ref.param
+                        });
+                        // When targeting an AudioParam, we do not advance currentNodeName to the param
+                        // Keep currentNodeName so chains like a -> b.param -> c are still valid (a -> b, then b -> c)
+                    } else {
+                        this.connections.push({
+                            from: currentNodeName,
+                            to: resolvedTarget
+                        });
+                        currentNodeName = resolvedTarget;
+                    }
+                } else {
+                    // Fallback: resolve as simple node/route name
+                    const resolvedTarget = this.resolveNodeOrRoute(targetExpression, 'target');
+                    this.connections.push({
+                        from: currentNodeName,
+                        to: resolvedTarget
+                    });
+                    currentNodeName = resolvedTarget;
+                }
             }
         }
     }
@@ -519,6 +556,51 @@ export class GraphParser {
         
         // Not a route, return as-is (should be a node name)
         return name;
+    }
+
+    /**
+     * Resolve a reference that may include an index into a route's chain.
+     * If index is null, fallback to resolveNodeOrRoute.
+     */
+    resolveNodeOrRouteWithIndex(name, index, context) {
+        if (index == null) {
+            return this.resolveNodeOrRoute(name, context);
+        }
+        if (!this.namedRoutes.has(name)) {
+            this.errors.push(`Cannot index into unknown route: ${name}[${index}]`);
+            return name;
+        }
+        const route = this.namedRoutes.get(name);
+        // Build an expanded list of node names for the route, resolving nested routes for targets to their first node
+        const expanded = [];
+        for (const item of route.allNodes) {
+            if (item === OUTPUT_KEYWORD) continue;
+            const resolved = this.resolveNodeOrRoute(item, 'target');
+            expanded.push(resolved);
+        }
+        if (index < 0 || index >= expanded.length) {
+            this.errors.push(`Route index out of range: ${name}[${index}] (length=${expanded.length})`);
+            return expanded[expanded.length - 1] ?? name;
+        }
+        return expanded[index];
+    }
+
+    /**
+     * Parse a reference expression supporting optional [index] and .param
+     * Examples:
+     * - fm
+     * - fm[0]
+     * - fm.frequency
+     * - fm[1].frequency
+     */
+    parseReferenceExpression(expression) {
+        const m = expression.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\[(\d+)\])?\s*(?:\.(\w+))?$/);
+        if (!m) return null;
+        return {
+            name: m[1],
+            index: m[2] != null ? parseInt(m[2], 10) : null,
+            param: m[3] || null
+        };
     }
 
     /**

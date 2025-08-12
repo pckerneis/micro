@@ -400,7 +400,11 @@ class MicroApp {
         
         // Add connections
         for (const connection of connections) {
-            mermaidCode += `    ${connection.from} --> ${connection.to}\n`;
+            if (connection.toParam) {
+                mermaidCode += `    ${connection.from} --|.${connection.toParam}|--> ${connection.to}\n`;
+            } else {
+                mermaidCode += `    ${connection.from} --> ${connection.to}\n`;
+            }
         }
         
         // Add patterns as annotations
