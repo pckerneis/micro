@@ -193,7 +193,7 @@ export class GraphParser {
 
     /**
      * Parse a named route definition
-     * Example: route1 = lowpass{cutoff=200} -> reverb{size=3.0, length=10}
+     * Example: route1 = lowpass{frequency=200} -> reverb{size=3.0, length=10}
      */
     parseNamedChain(name, definition) {
         const parts = definition.split('->').map(part => part.trim());

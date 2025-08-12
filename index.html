@@ -50,7 +50,7 @@ fm -> lead.frequency                # modulate lead oscillator frequency
 lead -> gain{level=-6dB} -> OUT
 
 # Bass with filter
-bass = square{} -> lowpass{cutoff=200} -> gain{level=-8dB} -> OUT
+bass = square{} -> lowpass{frequency=200} -> gain{level=-8dB} -> OUT
 
 # Create patterns
 @kick [60] 1

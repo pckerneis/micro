@@ -30,7 +30,7 @@ synth = sine{} -> OUT
 Syntax basics (curly braces with named parameters):
 
 - Instruments: `sine{attack=0.01, decay=0.2, sustain=0.7, release=0.3}`
-- Effects: `lowpass{cutoff=800, Q=1.0}`, `delay{time=0.5, feedback=0.3}`, `gain{level=-6dB}`
+- Effects: `lowpass{frequency=800, Q=1.0}`, `delay{time=0.5, feedback=0.3}`, `gain{level=-6dB}`
 - Samples: `sample{url='https://.../sound.mp3', gain=1.0}`
 - Connect: `a -> b -> OUT`
 
@@ -40,7 +40,7 @@ Examples:
 lead = sine{decay=0.1, sustain=0}
 lead -> gain{level=-6dB} -> OUT
 
-bass = square{attack=0.01, sustain=0} -> lowpass{cutoff=200} -> gain{level=-8dB} -> OUT
+bass = square{attack=0.01, sustain=0} -> lowpass{frequency=200} -> gain{level=-8dB} -> OUT
 
 # Parallel routing: repeat the source name on multiple lines
 lead -> delay{time=0.75} -> gain{level=-12dB} -> OUT
@@ -52,7 +52,7 @@ lead -> gain{level=-6dB} -> OUT
 You can name a chain and reuse it. When connecting TO a route, it connects to its first node. When connecting FROM a route, it connects from its last node.
 
 ```
-chain = lowpass{cutoff=800} -> delay{time=0.3}
+chain = lowpass{frequency=800} -> delay{time=0.3}
 lead = sine{}
 lead -> chain -> OUT
 ```
@@ -127,21 +127,21 @@ saw -> amp -> OUT
 ```
 kick = sample{url='https://cdn.freesound.org/previews/584/584792_11532701-lq.mp3'} -> OUT
 snare = sample{url='https://cdn.freesound.org/previews/13/13751_32468-lq.mp3'} -> OUT
-bass = square{sustain=0, decay=0.1} -> lowpass{cutoff=180} -> gain{level=-6dB} -> OUT
+bass = square{sustain=0, decay=0.1} -> lowpass{frequency=180} -> gain{level=-6dB} -> OUT
 
 @kick [60] 1
 @snare [_ 60] 1
 @bass [36 36 36 34] 1/4
 ```
 
-### 4) Filter sweep using route index
+### 4) Filter sweep
 
 ```
-chain = sine{} -> lowpass{cutoff=800} -> gain{level=-6dB}
-lfo = sine{frequency=0.25, level=300}
-lfo -> chain[1].frequency  # lowpass.frequency
+chain = sawtooth{} -> lowpass{frequency=800, Q=10} -> gain{level=-6dB}
+lfo = sine{frequency=1, level=1200}
+lfo -> chain[1].frequency
 chain -> OUT
-@chain [69] 1
+@chain [40] 1
 ```
 
 ## Example Program
@@ -151,8 +151,8 @@ chain -> OUT
 kick = sample{url='https://cdn.freesound.org/previews/584/584792_11532701-lq.mp3'} -> OUT
 snare = sample{url='https://cdn.freesound.org/previews/13/13751_32468-lq.mp3'} -> OUT
 
-pad = triangle{} -> lowpass{cutoff=2200} -> delay{time=0.35} -> OUT
-bass = square{sustain=0, decay=0.12} -> lowpass{cutoff=180} -> gain{level=-6dB} -> OUT
+pad = triangle{} -> lowpass{frequency=2200} -> delay{time=0.35} -> OUT
+bass = square{sustain=0, decay=0.12} -> lowpass{frequency=180} -> gain{level=-6dB} -> OUT
 lead = sine{decay=0.1, sustain=0} -> gain{level=-9dB} -> OUT
 
 @kick [60] 1

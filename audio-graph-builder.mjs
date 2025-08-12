@@ -227,12 +227,12 @@ export class AudioGraphBuilder {
         switch (type) {
             case 'lowpass':
                 filter.type = 'lowpass';
-                filter.frequency.value = parameters.cutoff ?? 1000;
+                filter.frequency.value = parameters.frequency ?? 1000;
                 filter.Q.value = parameters.q ?? 1.0;
                 break;
             case 'highpass':
                 filter.type = 'highpass';
-                filter.frequency.value = parameters.cutoff ?? 1000;
+                filter.frequency.value = parameters.frequency ?? 1000;
                 filter.Q.value = parameters.q ?? 1.0;
                 break;
             case 'bandpass':
