@@ -88,12 +88,25 @@ lfo2 -> amp.gain
 saw = sawtooth{}
 saw -> amp -> OUT
 @saw [52 55 59 62] 1/2
-```
 
-Notes:
-- Connecting FROM a parameter (e.g., `a.frequency -> b`) is not supported.
-- When using an instrument as a modulator source, a continuous oscillator is created from its parameters (`frequency`, `level`) to drive the target AudioParam.
-- For samples, modulation to `playbackRate` is supported.
+## Pattern Syntax
+
+Pattern lines use `@name [tokens...] stepDuration`. Tokens supported:
+ 
+ - **Rest `_`**: no note triggered for this step.
+ - **Continuation `-`**: tie/sustain the previous playable token for one more step.
+   - Wrap-around enabled: ties continue across pattern loop boundaries.
+ - **MIDI integer**: e.g., `60` (converted to frequency internally).
+ - **Frequency literal `Hz`**: e.g., `440Hz`, `432.5Hz` (used as exact frequency).
+ 
+ Duration per token is the pattern step duration. Continuations extend the previous note by additional steps.
+ 
+ Example:
+ 
+ ```
+ @lead [12 - - _ 440Hz -] 1/8
+ # 12 holds for 3 steps, then a rest, then 440Hz holds for 2 steps.
+ ```
 
 ## Named Effects and Modular Routing
 

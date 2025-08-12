@@ -508,10 +508,14 @@ export class GraphParser {
         }
 
         const [, targetName, notesStr, durationStr] = match;
-        const notes = notesStr.split(/\s+/).map(note => {
-            if (note === '_') return null;
-            const num = parseFloat(note);
-            return isFinite(num) ? num : note;
+        const notes = notesStr.split(/\s+/).map(tok => {
+            if (tok === '_') return null;         // rest
+            if (tok === '-') return '-';          // continuation (tie)
+            // Frequency literal with Hz suffix: keep as string so engine treats as Hz
+            if (/^\d+(?:\.\d+)?\s*Hz$/i.test(tok)) return tok;
+            // Otherwise, numeric tokens are MIDI notes
+            const num = Number(tok);
+            return Number.isFinite(num) ? num : tok;
         });
 
         const duration = this.parseDuration(durationStr);

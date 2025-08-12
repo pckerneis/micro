@@ -229,15 +229,27 @@ export class AudioEngine {
                 if (this.currentTick === pattern.nextTick) {
                     const notesLen = pattern.notes.length || 1;
                     const stepIndex = Math.floor((pattern.nextTick / pattern.stepTicks) % notesLen);
-                    const note = pattern.notes[stepIndex];
-                    if (note !== null && note !== '_') {
+                    const tok = pattern.notes[stepIndex];
+                    // Rest or continuation: advance only
+                    if (tok === null || tok === '-' || tok === '_') {
+                        pattern.nextTick += pattern.stepTicks;
+                    } else {
+                        // Compute sustain across subsequent '-' tokens
+                        let sustainSteps = 1;
+                        for (let i = 1; i < notesLen; i++) {
+                            const nextTok = pattern.notes[(stepIndex + i) % notesLen];
+                            if (nextTok === '-') {
+                                sustainSteps += 1;
+                            } else {
+                                break;
+                            }
+                        }
                         let timeSec = this.startTime + pattern.nextTick * this.tickSec;
-                        // Clamp to a tiny bit in the future to avoid past-start edge cases
                         timeSec = Math.max(timeSec, now + 0.005);
-                        const durSec = Math.max(0.01, pattern.stepTicks * this.tickSec);
-                        this.playNote(routeKey, note, durSec, timeSec);
+                        const durSec = Math.max(0.01, sustainSteps * pattern.stepTicks * this.tickSec);
+                        this.playNote(routeKey, tok, durSec, timeSec);
+                        pattern.nextTick += pattern.stepTicks;
                     }
-                    pattern.nextTick += pattern.stepTicks;
                 }
             }
             this.currentTick += 1;
@@ -267,9 +279,20 @@ export class AudioEngine {
         // Convert MIDI note to frequency if needed
         let frequency;
         if (typeof note === 'number') {
+            // MIDI note number
             frequency = 440 * Math.pow(2, (note - 69) / 12);
+        } else if (typeof note === 'string') {
+            // Literal frequency tokens like "440Hz" or "440.0Hz"
+            const hzMatch = note.match(/^(\d+(?:\.\d+)?)\s*Hz$/i);
+            if (hzMatch) {
+                frequency = parseFloat(hzMatch[1]);
+            } else {
+                // Fallback: parse leading number if present
+                const n = parseFloat(note);
+                frequency = isFinite(n) ? n : 440;
+            }
         } else {
-            frequency = parseFloat(note) || 440;
+            frequency = 440;
         }
 
         // Play the note using the graph builder
