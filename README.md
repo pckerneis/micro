@@ -1,179 +1,165 @@
 # Micro
 
-Micro is a minimalistic livecoding web environment for music.
+Micro is a minimalistic audio livecoding environment built on the Web Audio API.
 
-Features:
-- Web editor (built on CodeMirror)
-- Web player (built on Web Audio API)
-- Simple language for instruments routing and note sequences
-- Run changes in real-time and hear the result
+- __Editor__: CodeMirror-based, hot-exec with Ctrl/Cmd+Enter
+- __Engine__: GraphParser → AudioGraphBuilder → AudioEngine (scheduler)
+- __Language__: Simple routing with `->`, explicit `OUT`, named routes, and patterns
 
-## Audio Routing System
+## Quick start
 
-**Default Behavior**: All instruments are connected to the audio output by default.
+1) Serve the folder (modules require HTTP). Example: `npx vite --port 8080`
+2) Open http://localhost:8080 and click Play
+3) Edit code, press Execute to hear the changes
 
-**Effects Routing**: When you use the `->` operator to chain effects, only the **source** node is disconnected from output. The **final effect** in the chain remains connected to output.
+## Shortcuts
 
-**OUT Keyword**: Available for explicit reconnection if needed, but typically not required.
+- <kbd>Ctrl/Cmd</kbd> + <kbd>S</kbd> (or <kbd>Ctrl/Cmd</kbd> + <kbd>Enter</kbd>) to execute the code
+- <kbd>Ctrl/Cmd</kbd> + <kbd>Space</kbd> to toggle play
 
-### Routing Examples
+## Routing
 
-```
-pad = square()                    # Source connected to output (default)
-filtered = square() -> lowpass(220)  # Source bypassed, lowpass filter connected to output
-chained = square() -> delay(0.25) -> lowpass(220)  # Source bypassed, lowpass filter connected to output
-```
+Declare audio nodes and connect them with "->".
 
-## Instrument Types
-
-### Sample Instruments
-- **`sample('url')`** - Load audio sample from URL
-- **`sample(url='url', gain=1.5)`** - Named arguments with gain control
-- **Multi-line syntax** supported for complex definitions
-
-### Oscillator Instruments
-- **`square()`, `sine()`, `sawtooth()`, `triangle()`** - Waveform oscillators
-- **ADSR envelope** parameters: `attack`, `decay`, `sustain`, `release`
-
-## Effects and Routing
-
-Micro supports effects chains using the `->` operator and parallel routing:
-
-```javascript
-// Basic effects
-kick = sample('kick.wav') -> delay(0.5)
-lead = sine() -> lowpass(cutoff=800) -> delay(0.25)
-
-//## Parallel Routing and Gain Control
-
-You can create multiple effect chains per instrument for complex routing:
+Use the `OUT` keyword to connect nodes to the output.
 
 ```
-lead = square()
-lead -> delay(0.75) -> gain(0.2)
-lead -> gain(0.7)
+synth = sine{} -> OUT
 ```
 
-This creates two parallel paths: one with delay and low gain, another with just higher gain. Only the last effect in each chain connects to the output.
+Syntax basics (curly braces with named parameters):
+
+- Instruments: `sine{attack=0.01, decay=0.2, sustain=0.7, release=0.3}`
+- Effects: `lowpass{cutoff=800, Q=1.0}`, `delay{time=0.5, feedback=0.3}`, `gain{level=-6dB}`
+- Samples: `sample{url='https://.../sound.mp3', gain=1.0}`
+- Connect: `a -> b -> OUT`
+
+Examples:
+
+```
+lead = sine{decay=0.1, sustain=0}
+lead -> gain{level=-6dB} -> OUT
+
+bass = square{attack=0.01, sustain=0} -> lowpass{cutoff=200} -> gain{level=-8dB} -> OUT
+
+# Parallel routing: repeat the source name on multiple lines
+lead -> delay{time=0.75} -> gain{level=-12dB} -> OUT
+lead -> gain{level=-6dB} -> OUT
+```
+
+### Named routes
+
+You can name a chain and reuse it. When connecting TO a route, it connects to its first node. When connecting FROM a route, it connects from its last node.
+
+```
+chain = lowpass{cutoff=800} -> delay{time=0.3}
+lead = sine{}
+lead -> chain -> OUT
+```
 
 ## Modulating AudioParams (FM/AM/LFO)
 
-You can connect any node output to another node's AudioParam using the index/param syntax:
+You can connect any node's output to another node's AudioParam using index/param syntax:
 
-- `routeOrName[index].param`
-- Examples of params: `gain`, `frequency`, `detune`, `Q`, `playbackRate`, etc.
-- When the target is an instrument (e.g., `sine{}`), modulation is applied per-note to the underlying oscillator or sample source.
+- Target format: `routeOrName[index].param`
+- Common params: `frequency`, `detune`, `gain`, `Q`, `playbackRate`, ...
+- If the target is an instrument, the modulation is applied per-note to the underlying source.
+ - Indexing is zero-based (e.g., in `a -> b -> c`, `route[0]=a`, `route[1]=b`, `route[2]=c`).
 
-### Examples
+### Example
 
 ```
 # FM: modulator -> carrier.frequency
-fm = sine{frequency=5, level=200}      # LFO or FM source (continuous)
+fm = sine{frequency=5, level=200}
 lead = sine{decay=0.1, sustain=0}
 fm -> lead.frequency
 lead -> OUT
 @lead [70 72 74 76] 1/2
-
-# Routing to a param inside a named route using index
-chain = sine{} -> lowpass{cutoff=800} -> gain{level=-6dB}
-lfo = sine{frequency=2, level=300}
-lfo -> chain[1].frequency  # chain[1] is lowpass in this route
-chain -> OUT
-@chain [69] 1
-
-# AM: modulator -> gain.gain
-amp = gain{level=0.5}
-lfo2 = sine{frequency=4, level=0.5}
-lfo2 -> amp.gain
-saw = sawtooth{}
-saw -> amp -> OUT
-@saw [52 55 59 62] 1/2
+```
 
 ## Pattern Syntax
 
-Pattern lines use `@name [tokens...] stepDuration`. Tokens supported:
- 
- - **Rest `_`**: no note triggered for this step.
- - **Continuation `-`**: tie/sustain the previous playable token for one more step.
-   - Wrap-around enabled: ties continue across pattern loop boundaries.
- - **MIDI integer**: e.g., `60` (converted to frequency internally).
- - **Frequency literal `Hz`**: e.g., `440Hz`, `432.5Hz` (used as exact frequency).
- 
- Duration per token is the pattern step duration. Continuations extend the previous note by additional steps.
- 
- Example:
- 
- ```
- @lead [12 - - _ 440Hz -] 1/8
- # 12 holds for 3 steps, then a rest, then 440Hz holds for 2 steps.
- ```
+Patterns schedule notes or gates: `@target [tokens...] stepDuration`.
 
-## Named Effects and Modular Routing
+Tokens:
 
-Create reusable effect modules that can be shared between instruments:
+- __Rest `"_"`__: no event this step
+- __Continuation `"-"`__: tie/sustain the previous playable step (wrap-around enabled)
+- __MIDI integer__: e.g., `60` (converted to Hz internally)
+- __Frequency literal__: e.g., `440Hz`, `432.5Hz` (used as exact frequency)
+
+Duration per token is `stepDuration`. Continuations add steps to the previous note.
+
+Examples:
 
 ```
-# Define named effects
-effect myDelay = delay(time=0.5)
-effect myFilter = lowpass(cutoff=800)
+@lead [12 - - _ 440Hz -] 1/8
+# 12 holds 3 steps, rest 1 step, 440Hz holds 2 steps (ties wrap across loop).
 
-# Use named effects in routing
-lead = square()
-lead -> myDelay -> myFilter
-
-bass = sine()
-bass -> myFilter -> gain(0.8)
+@bass [36 _ 36 _ 36 _ 34 _] 1/4
 ```
 
-Named effects enable:
-- **Reusable effect modules**: Define once, use multiple times
-- **Modular routing**: Build complex effect graphs
-- **Feedback connections**: Route effects back to themselves or other effects
-- **Consistent processing**: Same effect settings across multiple instruments
+## Full Examples
 
-### Available Effects
-
-- **delay(time)**: Echo effect with feedback (time in seconds)
-- **lowpass(cutoff)**: Low-pass filter (cutoff frequency in Hz)
-- **gain(level)**: Volume control (level as multiplier, e.g., 0.5 = 50%)
-
-### Routing Behavior
-
-- **Without routing**: Instrument connects directly to output
-- **Single chain**: `instrument -> effect1 -> effect2`
-- **Parallel routing**: Multiple lines with same instrument name create parallel chains
-- **OUT keyword**: Explicitly connects to output (usually not needed)
-
-## Sample Syntax Examples
+### 1) FM lead (LFO to frequency)
 
 ```
-# Simple URL syntax
-kick = sample('https://cdn.freesound.org/previews/584/584792_11532701-lq.mp3')
+lead = sine{decay=0.1, sustain=0}
+fm = sine{frequency=5, level=120}
+fm -> lead.frequency
+lead -> OUT
+@lead [70 72 74 76] 1/2
+```
 
-# Named arguments with gain
-snare = sample(url='https://cdn.freesound.org/previews/13/13751_32468-lq.mp3', gain=1.5)
+### 2) AM tremolo
 
-# Multi-line definition
-kick = sample(
-  url='https://cdn.freesound.org/previews/584/584792_11532701-lq.mp3'
-  gain=1.5
-)
+```
+amp = gain{level=0.5}
+lfo = sine{frequency=4, level=0.5}
+lfo -> amp.gain
+saw = sawtooth{}
+saw -> amp -> OUT
+@saw [52 55 59 62] 1/2
+```
+
+### 3) Sample drums + bass
+
+```
+kick = sample{url='https://cdn.freesound.org/previews/584/584792_11532701-lq.mp3'} -> OUT
+snare = sample{url='https://cdn.freesound.org/previews/13/13751_32468-lq.mp3'} -> OUT
+bass = square{sustain=0, decay=0.1} -> lowpass{cutoff=180} -> gain{level=-6dB} -> OUT
+
+@kick [60] 1
+@snare [_ 60] 1
+@bass [36 36 36 34] 1/4
+```
+
+### 4) Filter sweep using route index
+
+```
+chain = sine{} -> lowpass{cutoff=800} -> gain{level=-6dB}
+lfo = sine{frequency=0.25, level=300}
+lfo -> chain[1].frequency  # lowpass.frequency
+chain -> OUT
+@chain [69] 1
 ```
 
 ## Example Program
 
 ```
-# this is a comment line
-kick = sample(
-  url='https://cdn.freesound.org/previews/584/584792_11532701-lq.mp3'
-  gain=1.2
-)
-snare = sample('https://cdn.freesound.org/previews/13/13751_32468-lq.mp3')
-pad = square() -> lowpass(cutoff=220) # filtered pad (lowpass connected to output)
-bass = square(sustain=0 decay=0.2) # you can provide options such as envelope parameters
-lead = sine() -> delay(0.75) -> lowpass(800) # chained effects (lowpass connected to output)
+# comments start with #
+kick = sample{url='https://cdn.freesound.org/previews/584/584792_11532701-lq.mp3'} -> OUT
+snare = sample{url='https://cdn.freesound.org/previews/13/13751_32468-lq.mp3'} -> OUT
 
-@kick [30] 1 # kick plays note 30 every 1 beat
-@pad [(70 77)] 2 # use parenthesis for chords
-@lead [70 77 74 76 72 81] 1/8 # lead plays a note sequence with a step duration of 1/8
-@snare [_ 46] # "_" means silence
+pad = triangle{} -> lowpass{cutoff=2200} -> delay{time=0.35} -> OUT
+bass = square{sustain=0, decay=0.12} -> lowpass{cutoff=180} -> gain{level=-6dB} -> OUT
+lead = sine{decay=0.1, sustain=0} -> gain{level=-9dB} -> OUT
+
+@kick [60] 1
+@snare [_ 60] 1
+@pad [60 _ 67 _] 1
+@bass [36 36 36 34] 1/4
+@lead [68 - - _ 440Hz -] 1/8
+```
+
+## Available nodes
