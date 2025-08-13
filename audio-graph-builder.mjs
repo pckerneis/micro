@@ -141,7 +141,7 @@ export class AudioGraphBuilder {
             attack: parameters.attack ?? 0.01,
             decay: parameters.decay ?? 0.3,
             sustain: parameters.sustain ?? 0.7,
-            release: parameters.release ?? 0.5
+            release: parameters.release ?? 0.1
         };
         // Keep raw params as well (for modulators: frequency, level, etc.)
         instrumentGain._rawParams = { ...parameters };
@@ -517,13 +517,16 @@ export class AudioGraphBuilder {
         const decay = Math.max(0, params.decay ?? 0.3);
         const sustain = params.sustain ?? 0.7;
         const release = Math.max(0, params.release ?? 0.5);
+        const minGain = 0.01;
         const t0 = startTime - eps;
         envelope.gain.cancelScheduledValues(t0);
         envelope.gain.setValueAtTime(0, t0);
-        envelope.gain.linearRampToValueAtTime(1 * velocity, startTime + attack);
-        envelope.gain.linearRampToValueAtTime(sustain * velocity, startTime + attack + decay);
-        envelope.gain.setValueAtTime(sustain * velocity, Math.max(0, endTime - release));
-        envelope.gain.linearRampToValueAtTime(0, endTime);
+        envelope.gain.exponentialRampToValueAtTime(velocity, startTime + attack);
+        envelope.gain.exponentialRampToValueAtTime(Math.max(minGain, sustain * velocity), startTime + attack + decay);
+        // Hold sustain until the end of the step, then start release
+        envelope.gain.setValueAtTime(sustain * velocity, endTime);
+        envelope.gain.exponentialRampToValueAtTime(minGain, endTime + release);
+        envelope.gain.setValueAtTime(0, endTime + release + eps);
 
         // Connect: oscillator -> envelope -> instrument node
         oscillator.connect(envelope);
@@ -549,7 +552,7 @@ export class AudioGraphBuilder {
 
         // Start and stop
         oscillator.start(startTime);
-        oscillator.stop(endTime);
+        oscillator.stop(endTime + release);
 
         return { oscillator, envelope };
     }
@@ -590,15 +593,13 @@ export class AudioGraphBuilder {
         envelope.gain.setValueAtTime(0, t0);
         envelope.gain.linearRampToValueAtTime(1 * velocity, startTime + fadeIn);
 
-        // Simple fade out if duration is shorter than sample
+        // Hold until step end, then apply release
         const sampleDuration = sampleNode._buffer.duration / (bufferSource.playbackRate.value || 1);
         const actualDuration = Math.max(0.01, Math.min(duration, sampleDuration));
-        const fadeOutTime = Math.min(0.1, actualDuration * 0.1); // 10% fade out or 100ms max
-
-        if (actualDuration > fadeOutTime) {
-            envelope.gain.setValueAtTime(1 * velocity, startTime + actualDuration - fadeOutTime);
-            envelope.gain.linearRampToValueAtTime(0, startTime + actualDuration);
-        }
+        const params = sampleNode._instrumentParams || {};
+        const release = Math.max(0, params.release ?? 0.1);
+        envelope.gain.setValueAtTime(1 * velocity, startTime + actualDuration);
+        envelope.gain.linearRampToValueAtTime(0, startTime + actualDuration + release);
 
         // Connect: buffer source -> envelope -> sample node
         bufferSource.connect(envelope);
@@ -620,8 +621,8 @@ export class AudioGraphBuilder {
         // Start playback
         bufferSource.start(startTime);
         
-        // Stop after duration or when sample ends
-        bufferSource.stop(startTime + actualDuration);
+        // Stop after duration + release (or when sample ends)
+        bufferSource.stop(startTime + actualDuration + release);
 
         return { bufferSource, envelope };
     }
