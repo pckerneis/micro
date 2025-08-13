@@ -396,3 +396,21 @@ main {
     align-items: center;
     justify-content: center;
 }
+
+/* Editor-only Fullscreen Mode */
+body.fullscreen-editor-only header,
+body.fullscreen-editor-only .output-container,
+body.fullscreen-editor-only .status,
+body.fullscreen-editor-only .graph-modal {
+    display: none !important;
+}
+
+body.fullscreen-editor-only .container,
+body.fullscreen-editor-only main,
+body.fullscreen-editor-only .editor-container {
+    height: 100vh !important;
+}
+
+body.fullscreen-editor-only .CodeMirror {
+    height: 100vh !important;
+}

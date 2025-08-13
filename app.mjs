@@ -8,6 +8,7 @@ class MicroApp {
         this.editor = null;
         this.isInitialized = false;
         this.sampleRegistry = new Map(); // name -> AudioBuffer
+        this.editorFullscreen = false; // editor-only fullscreen state
     }
 
     async init() {
@@ -92,12 +93,14 @@ class MicroApp {
         const playBtn = document.getElementById('playBtn');
         const runBtn = document.getElementById('runBtn');
         const graphBtn = document.getElementById('graphBtn');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
         const masterGainSlider = document.getElementById('masterGain');
         const volumeValue = document.getElementById('volumeValue');
 
         playBtn.addEventListener('click', () => this.togglePlayback());
         runBtn.addEventListener('click', () => this.executeCode());
         graphBtn.addEventListener('click', () => this.showGraph());
+        if (fullscreenBtn) fullscreenBtn.addEventListener('click', () => this.toggleEditorFullscreen());
         
         // Start time display update interval
         this.startTimeDisplay();
@@ -119,10 +122,62 @@ class MicroApp {
                 e.preventDefault();
                 this.togglePlayback();
             }
+            // Toggle editor-only fullscreen: Ctrl+Shift+F / Cmd+Shift+F
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'F' || e.key === 'f')) {
+                e.preventDefault();
+                this.toggleEditorFullscreen();
+            }
+            // Exit fullscreen with Escape
+            if (e.key === 'Escape' && this.editorFullscreen) {
+                e.preventDefault();
+                this.toggleEditorFullscreen(false);
+            }
+        });
+
+        // Keep UI in a sane state if user exits browser fullscreen via ESC
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement && this.editorFullscreen) {
+                // We still keep editor-only layout, no action required
+                // but ensure editor refreshes to current viewport
+                setTimeout(() => this.editor && this.editor.refresh(), 50);
+            }
         });
 
         // Samples UI (drag & drop, file picker)
         this.setupSamplesUI();
+    }
+
+    /**
+     * Toggle editor-only fullscreen mode. When enabled, only the editor is visible.
+     * Optionally uses the browser Fullscreen API for immersive mode.
+     * @param {boolean=} force - true to enable, false to disable, undefined to toggle
+     */
+    toggleEditorFullscreen(force) {
+        const enable = typeof force === 'boolean' ? force : !this.editorFullscreen;
+        this.editorFullscreen = enable;
+        document.body.classList.toggle('fullscreen-editor-only', enable);
+
+        // Try browser fullscreen for immersive experience
+        try {
+            if (enable) {
+                if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen().catch(() => {/* ignore */});
+                }
+            } else {
+                if (document.fullscreenElement && document.exitFullscreen) {
+                    document.exitFullscreen().catch(() => {/* ignore */});
+                }
+            }
+        } catch (_) { /* ignore */ }
+
+        // Update button label
+        const btn = document.getElementById('fullscreenBtn');
+        if (btn) btn.textContent = enable ? '⤡ Exit Fullscreen' : '⤢ Fullscreen';
+
+        // Ensure CodeMirror resizes to new layout
+        if (this.editor) {
+            setTimeout(() => this.editor.refresh(), 50);
+        }
     }
 
     async executeCode() {
