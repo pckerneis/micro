@@ -146,8 +146,13 @@ export class GraphParser {
      * (no leading @). Back-compat with optional @ is handled elsewhere.
      */
     isPatternVarDefinition(line) {
-        const m = line.match(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*\[[^\]]+\]\s+.+$/);
-        return !!m;
+        // Heuristic: assignment whose RHS looks like a pattern chain (contains '[' or '++')
+        // and does not contain '{' (node params) or '->' (routing)
+        const m = line.match(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*(.+)$/);
+        if (!m) return false;
+        const rhs = m[2];
+        if (rhs.includes('{') || rhs.includes('->')) return false;
+        return rhs.includes('[') || rhs.includes('++');
     }
 
     /**
@@ -201,24 +206,26 @@ export class GraphParser {
      * Examples: @lead [70] 1
      */
     parsePatterns(lines) {
-        // Pass 1: collect variable definitions of the form
-        //   varName = [tokens] duration
-        //   @varName = [tokens] duration   (backward compatible)
+        // Pass 1: collect variable definitions, supporting chained segments with '++'
         for (const line of lines) {
-            const def = line.match(/^@?(\w+)\s*=\s*\[([^\]]+)\]\s+(.+)$/);
-            if (def) {
-                const [, varName, notesStr, durationStr] = def;
-                const notes = this.parseNotesString(notesStr);
-                const duration = this.parseDuration(durationStr);
-                if (duration === null || duration <= 0) {
-                    this.errors.push(`Invalid pattern duration: ${durationStr}`);
-                    continue;
-                }
-                this.patternVars.set(varName, { notes, duration });
+            const def = line.match(/^@?(\w+)\s*=\s*(.+)$/);
+            if (!def) continue;
+            const [, varName, rhs] = def;
+            if (!this.isPatternVarDefinition(line)) continue;
+            const chained = this.parseChainedSegments(rhs.trim());
+            if (!chained) {
+                this.errors.push(`Invalid pattern definition for ${varName}: ${rhs}`);
+                continue;
             }
+            const { events, wrapCarryBeats } = chained;
+            this.patternVars.set(varName, { 
+                // Keep legacy fields minimally for compatibility
+                notes: [], duration: 1,
+                events, wrapCarryBeats
+            });
         }
 
-        // Pass 2: parse usages and inline definitions
+        // Pass 2: parse usages and inline definitions (with chaining)
         for (const line of lines) {
             if (!line.startsWith('@')) continue;
             // Skip lines that are variable definitions (handled above)
@@ -537,18 +544,19 @@ export class GraphParser {
      * Example: @lead [70] 1
      */
     parsePattern(line) {
-        // 1) Inline form: @target [tokens] duration
-        let m = line.match(/^@(\w+)\s+\[([^\]]+)\]\s+(.+)$/);
+        // 1) Inline form (with chaining): @target <segment> ( ++ <segment> )*
+        let m = line.match(/^@(\w+)\s+(.+)$/);
         if (m) {
-            const [, targetName, notesStr, durationStr] = m;
-            const notes = this.parseNotesString(notesStr);
-            const duration = this.parseDuration(durationStr);
-            if (duration === null || duration <= 0) {
-                this.errors.push(`Invalid pattern duration: ${durationStr}`);
+            const [, targetName, tail] = m;
+            const trimmed = tail.trim();
+            // Try chained segments first (supports var refs and bracket segments)
+            const chained = this.parseChainedSegments(trimmed);
+            if (chained) {
+                const { events, wrapCarryBeats } = chained;
+                this.addPattern(targetName, [], 1, events, wrapCarryBeats);
                 return;
             }
-            this.addPattern(targetName, notes, duration);
-            return;
+            // Else fall through to variable usage
         }
 
         // 2) Variable usage: @target varName
@@ -560,7 +568,11 @@ export class GraphParser {
                 return;
             }
             const def = this.patternVars.get(varName);
-            this.addPattern(targetName, def.notes, def.duration);
+            if (def.events) {
+                this.addPattern(targetName, [], 1, def.events, def.wrapCarryBeats || 0);
+            } else {
+                this.addPattern(targetName, def.notes, def.duration);
+            }
             return;
         }
 
@@ -647,10 +659,112 @@ export class GraphParser {
         return Number.isFinite(num) ? num : tok;
     }
 
+    /** Convert notes + uniform step beats to event list and leading wrap-carry beats */
+    makeEventsFromNotes(notes, stepBeats) {
+        const events = [];
+        let leadingCarry = 0;
+        let lastSoundingIndex = -1;
+        for (const tok of notes) {
+            if (tok === '-') {
+                if (lastSoundingIndex >= 0) {
+                    events[lastSoundingIndex].beats += stepBeats;
+                } else {
+                    leadingCarry += stepBeats;
+                }
+            } else if (tok === null || tok === '_') {
+                events.push({ token: null, beats: stepBeats });
+                // rest does not update lastSoundingIndex
+            } else {
+                events.push({ token: tok, beats: stepBeats });
+                lastSoundingIndex = events.length - 1;
+            }
+        }
+        return { events, wrapCarryBeats: leadingCarry };
+    }
+
+    /**
+     * Parse chained pattern segments separated by '++'.
+     * Each segment has form: [tokens] duration
+     * Returns { notes: any[], baseDuration: number } or null on error.
+     */
+    parseChainedSegments(str) {
+        const s = str.trim();
+        if (!s) return null;
+        const chainEvents = [];
+        let chainLeadingCarry = 0;
+        let i = 0;
+        const appendSegment = (seg) => {
+            if (!seg) return false;
+            const { events, wrapCarryBeats } = seg;
+            if (!Array.isArray(events)) return false;
+            if (chainEvents.length === 0) {
+                chainLeadingCarry += wrapCarryBeats;
+                for (const ev of events) chainEvents.push({ ...ev });
+            } else {
+                if (wrapCarryBeats > 0) {
+                    // Extend last sounding event so far, otherwise accumulate to leading carry
+                    let idx = chainEvents.length - 1;
+                    while (idx >= 0 && chainEvents[idx].token == null) idx--;
+                    if (idx >= 0) chainEvents[idx].beats += wrapCarryBeats; else chainLeadingCarry += wrapCarryBeats;
+                }
+                for (const ev of events) chainEvents.push({ ...ev });
+            }
+            return true;
+        };
+        while (i < s.length) {
+            // Skip whitespace
+            while (i < s.length && /\s/.test(s[i])) i++;
+            if (i >= s.length) break;
+            if (s[i] === '[') {
+                // Bracket segment
+                const start = i + 1; let j = start; let found = false;
+                while (j < s.length) { if (s[j] === ']') { found = true; break; } j++; }
+                if (!found) return null;
+                const notesStr = s.slice(start, j);
+                i = j + 1;
+                while (i < s.length && /\s/.test(s[i])) i++;
+                // Read duration until '++' or end
+                let k = i; let nextDelim = -1;
+                while (k < s.length) { if (s[k] === '+' && s[k+1] === '+') { nextDelim = k; break; } k++; }
+                const durationStr = s.slice(i, nextDelim === -1 ? s.length : nextDelim).trim();
+                const stepBeats = this.parseDuration(durationStr);
+                if (stepBeats == null || stepBeats <= 0) return null;
+                const notes = this.parseNotesString(notesStr);
+                const seg = this.makeEventsFromNotes(notes, stepBeats);
+                if (!appendSegment(seg)) return null;
+                if (nextDelim === -1) { i = s.length; } else { i = nextDelim + 2; }
+            } else {
+                // Expect a variable name segment
+                const m = s.slice(i).match(/^([a-zA-Z_][a-zA-Z0-9_]*)/);
+                if (!m) return null;
+                const varName = m[1];
+                i += varName.length;
+                // Ensure next non-space is either end or '++'
+                let k = i; while (k < s.length && /\s/.test(s[k])) k++;
+                let nextDelim = -1;
+                if (k < s.length) {
+                    if (s[k] === '+' && s[k+1] === '+') nextDelim = k;
+                    else return null;
+                }
+                if (!this.patternVars.has(varName)) return null;
+                const pv = this.patternVars.get(varName);
+                let seg;
+                if (pv.events) seg = { events: pv.events, wrapCarryBeats: pv.wrapCarryBeats || 0 };
+                else seg = this.makeEventsFromNotes(pv.notes || [], pv.duration || 1);
+                if (!appendSegment(seg)) return null;
+                if (nextDelim === -1) { i = s.length; } else { i = nextDelim + 2; }
+            }
+        }
+        if (!chainEvents.length) return null;
+        return { events: chainEvents, wrapCarryBeats: chainLeadingCarry };
+    }
+
+    // Fraction helpers removed; durations are handled per-event in beats
+
     /**
      * Add a parsed pattern instance for a given target, generating a unique id
      */
-    addPattern(targetName, notes, duration) {
+    addPattern(targetName, notes, duration, events = null, wrapCarryBeats = 0) {
         // Resolve the target (could be a node or route)
         // For patterns, we always want the first node (source instrument)
         const resolvedTarget = this.resolveNodeOrRoute(targetName, 'target');
@@ -662,7 +776,9 @@ export class GraphParser {
             targetName: targetName,        // original target as written by user
             resolvedName: resolvedTarget,  // actual node/route first node
             notes: notes,
-            duration: duration
+            duration: duration,
+            events: events,
+            wrapCarryBeats: wrapCarryBeats
         });
     }
 
