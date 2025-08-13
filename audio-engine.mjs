@@ -139,9 +139,28 @@ export class AudioEngine {
                     eventIndex: 0,
                     loopTicks
                 };
-                // If already playing, schedule from currentTick boundary
+                
+                // Soft-reload alignment: if already playing, align playhead to the next
+                // event boundary relative to the current transport tick, rather than restarting.
                 if (this.isPlaying) {
-                    pattern.nextTick = Math.max(0, this.currentTick);
+                    const ct = Math.max(0, this.currentTick);
+                    const phase = loopTicks > 0 ? (ct % loopTicks) : 0;
+                    // Precompute event start ticks within the loop
+                    const startTicks = [];
+                    let acc = 0;
+                    for (const e of events) { startTicks.push(acc); acc += Math.max(1, e.durTicks || 1); }
+                    // Find the first event whose start is strictly AFTER current phase
+                    let idx = startTicks.findIndex(s => s > phase);
+                    const baseLoopStart = ct - phase;
+                    if (idx === -1) {
+                        // Past the last event start (or exactly at end): wrap to the beginning of next loop
+                        idx = 0;
+                        pattern.nextTick = baseLoopStart + loopTicks; // next loop start
+                    } else {
+                        // Schedule at the next boundary in the current loop
+                        pattern.nextTick = baseLoopStart + startTicks[idx];
+                    }
+                    pattern.eventIndex = idx;
                 }
                 this.patterns.set(patternId, pattern);
             } else {
@@ -156,7 +175,8 @@ export class AudioEngine {
                 // If we're already playing, align nextTick to the next step boundary
                 if (this.isPlaying) {
                     const ct = Math.max(0, this.currentTick);
-                    pattern.nextTick = Math.ceil(ct / stepTicks) * stepTicks;
+                    const rem = ct % stepTicks;
+                    pattern.nextTick = rem === 0 ? ct + stepTicks : ct + (stepTicks - rem);
                 }
                 this.patterns.set(patternId, pattern);
             }
