@@ -211,32 +211,65 @@ export class AudioGraphBuilder {
         
         return delayNode;
     }
-
+    
     /**
-     * Create reverb node (simplified convolution reverb)
+     * Create reverb node using ConvolverNode with generated impulse response.
+     * Supported params:
+     * - length (seconds) or size: overall reverb length
+     * - decay: exponential decay factor (higher = longer tail emphasis)
+     * - mix: 0..1 dry/wet balance (default 0.5)
      */
     createReverbNode(parameters) {
-        const size = parameters.size ?? 2.0;
-        
-        // Create a simple reverb using multiple delays
-        const reverbGain = this.audioContext.createGain();
-        reverbGain.gain.value = 0.8;
-        
-        const delayTimes = [0.03, 0.05, 0.07, 0.09, 0.11, 0.13];
-        
-        for (const delayTime of delayTimes) {
-            const delay = this.audioContext.createDelay(1.0);
-            delay.delayTime.value = delayTime * size;
-            
-            const delayGain = this.audioContext.createGain();
-            delayGain.gain.value = 0.2 / delayTimes.length;
-            
-            reverbGain.connect(delay);
-            delay.connect(delayGain);
-            delayGain.connect(reverbGain); // Feedback
+        const duration = (parameters.length ?? parameters.size ?? 2.0);
+        const decay = (parameters.decay ?? 0.5);
+        const mix = Math.max(0, Math.min(1, parameters.mix ?? 0.5));
+
+        // Build composite: input -> [dry, convolver->wet] -> output
+        const input = this.audioContext.createGain();
+        const output = this.audioContext.createGain();
+        const dry = this.audioContext.createGain();
+        const wet = this.audioContext.createGain();
+        const convolver = this.audioContext.createConvolver();
+        convolver.buffer = this.generateImpulseResponse(duration, decay);
+
+        dry.gain.value = 1 - mix;
+        wet.gain.value = mix;
+
+        input.connect(dry);
+        input.connect(convolver);
+        convolver.connect(wet);
+        dry.connect(output);
+        wet.connect(output);
+
+        // Expose composite ends for graph connections
+        output._input = input;   // when connecting TO this effect, use _input
+        output._output = output; // when connecting FROM this effect, use node itself
+        return output;
+    }
+
+    /**
+     * Generate an AudioBuffer impulse response for the convolver.
+     */
+    generateImpulseResponse(duration, decay) {
+        const sampleRate = this.audioContext.sampleRate;
+        const length = Math.max(1, Math.floor(sampleRate * Math.max(0.01, duration)));
+        const impulse = this.audioContext.createBuffer(2, length, sampleRate);
+        for (let channel = 0; channel < 2; channel++) {
+            const channelData = impulse.getChannelData(channel);
+            for (let i = 0; i < length; i++) {
+                const t = i / sampleRate;
+                const env = Math.pow(1 - (t / Math.max(0.01, duration)), Math.max(0.001, decay) * 3);
+                const noise = (Math.random() * 2 - 1) * env;
+                // Add a hint of early reflections in first 100ms
+                let sample = noise;
+                if (i < sampleRate * 0.1) {
+                    const early = Math.sin(i * 0.01) * env * 0.5;
+                    sample += early;
+                }
+                channelData[i] = sample;
+            }
         }
-        
-        return reverbGain;
+        return impulse;
     }
 
     /**
@@ -337,7 +370,8 @@ export class AudioGraphBuilder {
 
             if (connection.to === OUTPUT_KEYWORD) {
                 // Connect to provided output node (e.g., master gain)
-                sourceNode.connect(this.outputNode);
+                const src = sourceNode._output || sourceNode;
+                src.connect(this.outputNode);
                 console.log(`Connected ${connection.from} -> OUT`);
             } else {
                 const targetNode = this.nodeMap.get(connection.to);
@@ -347,7 +381,9 @@ export class AudioGraphBuilder {
                         this.connectToParam(sourceNode, targetNode, connection.toParam);
                         console.log(`Connected ${connection.from} -> ${connection.to}.${connection.toParam}`);
                     } else {
-                        sourceNode.connect(targetNode);
+                        const src = sourceNode._output || sourceNode;
+                        const dst = targetNode._input || targetNode;
+                        src.connect(dst);
                         console.log(`Connected ${connection.from} -> ${connection.to}`);
                     }
                 } else {
