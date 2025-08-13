@@ -211,12 +211,33 @@ main {
     border: 1px solid #3e3e42;
     border-radius: 4px;
     cursor: pointer;
+    position: relative;
 }
 .sample-item:hover { border-color: #569cd6; }
 .sample-waveform { flex: 0 0 auto; border-radius: 2px; background: #1e1e1e; }
 .sample-meta { display: flex; gap: 10px; align-items: center; }
 .sample-name { color: #dcdcaa; }
 .sample-len { color: #858585; font-size: 0.85rem; }
+
+/* Sample remove button */
+.sample-remove {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 22px;
+    height: 22px;
+    line-height: 20px;
+    text-align: center;
+    border-radius: 50%;
+    border: 1px solid #3e3e42;
+    background: #1f1f1f;
+    color: #d4d4d4;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 120ms ease, background 120ms ease, color 120ms ease;
+}
+.sample-item:hover .sample-remove { opacity: 1; }
+.sample-remove:hover { background: #3a3a3a; color: #fff; }
 
 .console {
     flex: 1;

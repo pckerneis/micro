@@ -396,6 +396,22 @@ class MicroApp {
 
         item.appendChild(canvas);
         item.appendChild(meta);
+        
+        // Remove button (visible on hover)
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'sample-remove';
+        removeBtn.title = 'Remove sample';
+        removeBtn.textContent = '×';
+        removeBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation(); // prevent triggering copy
+            if (this.sampleRegistry.has(name)) {
+                this.sampleRegistry.delete(name);
+                this.audioEngine.setSampleRegistry(this.sampleRegistry);
+            }
+            item.remove();
+            this.showToast(`Removed sample '${name}'`, 1800);
+        });
+        item.appendChild(removeBtn);
 
         // Copy snippet to clipboard on click
         item.addEventListener('click', async () => {
