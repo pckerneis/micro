@@ -192,13 +192,11 @@ export class AudioGraphBuilder {
      */
     createReverbNode(parameters) {
         const size = parameters.size ?? 2.0;
-        const length = parameters.length ?? 2.0;
         
         // Create a simple reverb using multiple delays
         const reverbGain = this.audioContext.createGain();
         reverbGain.gain.value = 0.8;
         
-        const delays = [];
         const delayTimes = [0.03, 0.05, 0.07, 0.09, 0.11, 0.13];
         
         for (const delayTime of delayTimes) {
@@ -211,8 +209,6 @@ export class AudioGraphBuilder {
             reverbGain.connect(delay);
             delay.connect(delayGain);
             delayGain.connect(reverbGain); // Feedback
-            
-            delays.push({ delay, gain: delayGain });
         }
         
         return reverbGain;
@@ -487,7 +483,6 @@ export class AudioGraphBuilder {
      * Play a note on an instrument node
      */
     playNote(instrumentNode, frequency, duration = 1.0, time = 0) {
-        console.log('play note')
         if (!instrumentNode._instrumentType) {
             console.warn('Trying to play note on non-instrument node', instrumentNode);
             return;
@@ -498,7 +493,6 @@ export class AudioGraphBuilder {
         // Clamp to a tiny bit in the future to avoid past-start edge cases
         const now = this.audioContext.currentTime;
         startTime = Math.max(startTime, now + 0.005);
-        // console.log({ startTime })
 
         // Handle sample playback
         if (instrumentNode._instrumentType === 'sample') {
@@ -556,8 +550,6 @@ export class AudioGraphBuilder {
         // Start and stop
         oscillator.start(startTime);
         oscillator.stop(endTime);
-
-        console.log('osc')
 
         return { oscillator, envelope };
     }
@@ -633,9 +625,4 @@ export class AudioGraphBuilder {
 
         return { bufferSource, envelope };
     }
-}
-
-// Export for use in other modules
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = AudioGraphBuilder;
 }

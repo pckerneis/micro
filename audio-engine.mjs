@@ -110,9 +110,6 @@ export class AudioEngine {
             }
             this.patterns.set(key, pattern);
         }
-
-        // Recalculate scheduling grid based on current patterns
-        // this.updateGridStep(); // removed
     }
 
     /**
@@ -297,15 +294,6 @@ export class AudioEngine {
 
         // Play the note using the graph builder
         return this.graphBuilder.playNote(sourceNode, frequency, duration, time);
-    }
-
-    /**
-     * Set BPM
-     */
-    setBPM(bpm) {
-        this.bpm = Math.max(60, Math.min(200, bpm));
-        this.stepDuration = 60 / this.bpm;
-        this.tickSec = 60 / this.bpm / this.ppq;
     }
 
     /**
