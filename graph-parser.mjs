@@ -572,15 +572,58 @@ export class GraphParser {
      * Common notes string parser used by inline and variable definitions
      */
     parseNotesString(notesStr) {
-        return notesStr.split(/\s+/).map(tok => {
-            if (tok === '_') return null;         // rest
-            if (tok === '-') return '-';          // continuation (tie)
-            // Frequency literal with Hz suffix: keep as string so engine treats as Hz
-            if (/^\d+(?:\.\d+)?\s*Hz$/i.test(tok)) return tok;
-            // Otherwise, numeric tokens are MIDI notes or raw tokens passed through
-            const num = Number(tok);
-            return Number.isFinite(num) ? num : tok;
-        });
+        const out = [];
+        let buf = '';
+        let inParen = false;
+        let chordBuf = '';
+        const flushToken = (t) => {
+            const tok = t.trim();
+            if (!tok) return;
+            out.push(this.parseSingleNoteToken(tok));
+        };
+        const flushChord = () => {
+            const content = chordBuf.trim();
+            chordBuf = '';
+            if (!content) { out.push([]); return; }
+            const parts = content.split(/\s+/).filter(Boolean);
+            const chord = parts.map(p => this.parseSingleNoteToken(p));
+            out.push(chord);
+        };
+        for (let i = 0; i < notesStr.length; i++) {
+            const ch = notesStr[i];
+            if (inParen) {
+                if (ch === ')') {
+                    inParen = false;
+                    flushChord();
+                } else {
+                    chordBuf += ch;
+                }
+            } else {
+                if (ch === '(') {
+                    if (buf.trim()) { flushToken(buf); buf = ''; }
+                    inParen = true;
+                } else if (/\s/.test(ch)) {
+                    if (buf.trim()) { flushToken(buf); buf = ''; }
+                } else {
+                    buf += ch;
+                }
+            }
+        }
+        if (buf.trim()) flushToken(buf);
+        // Ignore unclosed parenthesis silently; treat as text
+        return out;
+    }
+
+    /**
+     * Parse a single note token into internal representation
+     */
+    parseSingleNoteToken(tok) {
+        if (tok === '_') return null;         // rest
+        if (tok === '-') return '-';          // continuation (tie)
+        // Frequency literal with Hz suffix: keep as string so engine treats as Hz
+        if (/^\d+(?:\.\d+)?\s*Hz$/i.test(tok)) return tok;
+        const num = Number(tok);
+        return Number.isFinite(num) ? num : tok;
     }
 
     /**

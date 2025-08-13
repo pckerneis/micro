@@ -552,7 +552,7 @@ export class AudioGraphBuilder {
         const t0 = startTime - eps;
         envelope.gain.cancelScheduledValues(t0);
         envelope.gain.setValueAtTime(0, t0);
-        envelope.gain.exponentialRampToValueAtTime(velocity, startTime + attack);
+        envelope.gain.exponentialRampToValueAtTime(Math.max(minGain, velocity), startTime + attack);
         envelope.gain.exponentialRampToValueAtTime(Math.max(minGain, sustain * velocity), startTime + attack + decay);
         // Hold sustain until the end of the step, then start release
         envelope.gain.setValueAtTime(sustain * velocity, endTime);

@@ -248,34 +248,7 @@ export class AudioEngine {
                     if (tok === null || tok === '-' || tok === '_') {
                         pattern.nextTick += pattern.stepTicks;
                     } else {
-                        // Parse inline velocity (@v) and probability (?p) modifiers
-                        // Examples: '60@0.8?0.5', '440Hz?0.25', '62@0.5'
-                        let baseNote = tok;
-                        let vel = 1.0;
-                        let prob = 1.0;
-                        if (typeof tok === 'string') {
-                            const m = tok.match(/^(.+?)(?:@(\d+(?:\.\d+)?))?(?:\?(\d+(?:\.\d+)?))?$/);
-                            if (m) {
-                                const baseRaw = m[1].trim();
-                                vel = m[2] != null ? Math.max(0, Math.min(1, parseFloat(m[2]))) : 1.0;
-                                prob = m[3] != null ? Math.max(0, Math.min(1, parseFloat(m[3]))) : 1.0;
-                                if (/^\d+(?:\.\d+)?\s*Hz$/i.test(baseRaw)) {
-                                    baseNote = baseRaw; // keep Hz literal as string
-                                } else if (/^\d+(?:\.\d+)?$/.test(baseRaw)) {
-                                    baseNote = Number(baseRaw); // MIDI note number
-                                } else {
-                                    baseNote = baseRaw; // unknown string, pass through
-                                }
-                            }
-                        }
-
-                        // Probability gate: skip triggering but still advance the step
-                        if (Math.random() > prob) {
-                            pattern.nextTick += pattern.stepTicks;
-                            continue;
-                        }
-
-                        // Compute sustain across subsequent '-' tokens
+                        // Compute sustain across subsequent '-' tokens (ties)
                         let sustainSteps = 1;
                         for (let i = 1; i < notesLen; i++) {
                             const nextTok = pattern.notes[(stepIndex + i) % notesLen];
@@ -288,8 +261,65 @@ export class AudioEngine {
                         let timeSec = this.startTime + pattern.nextTick * this.tickSec;
                         timeSec = Math.max(timeSec, now + 0.005);
                         const durSec = Math.max(0.01, sustainSteps * pattern.stepTicks * this.tickSec);
-                        this.playNote(pattern.targetName, baseNote, durSec, timeSec, vel);
-                        pattern.nextTick += pattern.stepTicks;
+
+                        if (Array.isArray(tok)) {
+                            // Chord: schedule each element simultaneously
+                            for (const subTok of tok) {
+                                if (subTok == null || subTok === '-' || subTok === '_') continue;
+                                let baseNote = subTok;
+                                let vel = 1.0;
+                                let prob = 1.0;
+                                if (typeof subTok === 'string') {
+                                    const m = subTok.match(/^(.+?)(?:@(\d+(?:\.\d+)?))?(?:\?(\d+(?:\.\d+)?))?$/);
+                                    if (m) {
+                                        const baseRaw = m[1].trim();
+                                        vel = m[2] != null ? Math.max(0, Math.min(1, parseFloat(m[2]))) : 1.0;
+                                        prob = m[3] != null ? Math.max(0, Math.min(1, parseFloat(m[3]))) : 1.0;
+                                        if (/^\d+(?:\.\d+)?\s*Hz$/i.test(baseRaw)) {
+                                            baseNote = baseRaw;
+                                        } else if (/^\d+(?:\.\d+)?$/.test(baseRaw)) {
+                                            baseNote = Number(baseRaw);
+                                        } else {
+                                            baseNote = baseRaw;
+                                        }
+                                    }
+                                }
+                                if (Math.random() > prob) continue; // per-note probability
+                                this.playNote(pattern.targetName, baseNote, durSec, timeSec, vel);
+                            }
+                            pattern.nextTick += pattern.stepTicks;
+                        } else {
+                            // Single note token
+                            // Parse inline velocity (@v) and probability (?p) modifiers
+                            // Examples: '60@0.8?0.5', '440Hz?0.25', '62@0.5'
+                            let baseNote = tok;
+                            let vel = 1.0;
+                            let prob = 1.0;
+                            if (typeof tok === 'string') {
+                                const m = tok.match(/^(.+?)(?:@(\d+(?:\.\d+)?))?(?:\?(\d+(?:\.\d+)?))?$/);
+                                if (m) {
+                                    const baseRaw = m[1].trim();
+                                    vel = m[2] != null ? Math.max(0, Math.min(1, parseFloat(m[2]))) : 1.0;
+                                    prob = m[3] != null ? Math.max(0, Math.min(1, parseFloat(m[3]))) : 1.0;
+                                    if (/^\d+(?:\.\d+)?\s*Hz$/i.test(baseRaw)) {
+                                        baseNote = baseRaw; // keep Hz literal as string
+                                    } else if (/^\d+(?:\.\d+)?$/.test(baseRaw)) {
+                                        baseNote = Number(baseRaw); // MIDI note number
+                                    } else {
+                                        baseNote = baseRaw; // unknown string, pass through
+                                    }
+                                }
+                            }
+
+                            // Probability gate: skip triggering but still advance the step
+                            if (Math.random() > prob) {
+                                pattern.nextTick += pattern.stepTicks;
+                                continue;
+                            }
+
+                            this.playNote(pattern.targetName, baseNote, durSec, timeSec, vel);
+                            pattern.nextTick += pattern.stepTicks;
+                        }
                     }
                 }
             }
