@@ -10,6 +10,7 @@ export class GraphParser {
         this.nodes = new Map();           // name -> NodeDefinition
         this.connections = [];            // array of Connection objects
         this.patterns = new Map();        // name -> PatternDefinition
+        this.patternVars = new Map();     // name -> { notes: any[], duration: number }
         this.namedRoutes = new Map();     // name -> RouteDefinition
         this.errors = [];
     }
@@ -33,6 +34,7 @@ export class GraphParser {
             nodes: this.nodes,
             connections: this.connections,
             patterns: this.patterns,
+            patternVars: this.patternVars,
             namedRoutes: this.namedRoutes,
             errors: this.errors
         };
@@ -42,6 +44,7 @@ export class GraphParser {
         this.nodes.clear();
         this.connections = [];
         this.patterns.clear();
+        this.patternVars.clear();
         this.namedRoutes.clear();
         this.errors = [];
     }
@@ -119,6 +122,10 @@ export class GraphParser {
     parseNodeDefinitions(lines) {
         for (const line of lines) {
             if (!line.startsWith('@') && this.isAssignmentLine(line)) {
+                // Skip pattern variable definitions of form: name = [tokens] duration
+                if (this.isPatternVarDefinition(line)) {
+                    continue;
+                }
                 const equalIndex = this.findAssignmentOperator(line);
                 const name = line.substring(0, equalIndex).trim();
                 const definition = line.substring(equalIndex + 1).trim();
@@ -131,6 +138,16 @@ export class GraphParser {
                 this.parseNamedChain(name, definition);
             }
         }
+    }
+
+    /**
+     * Detects pattern variable definition lines like:
+     *   name = [tokens] duration
+     * (no leading @). Back-compat with optional @ is handled elsewhere.
+     */
+    isPatternVarDefinition(line) {
+        const m = line.match(/^\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*=\s*\[[^\]]+\]\s+.+$/);
+        return !!m;
     }
 
     /**
@@ -184,10 +201,29 @@ export class GraphParser {
      * Examples: @lead [70] 1
      */
     parsePatterns(lines) {
+        // Pass 1: collect variable definitions of the form
+        //   varName = [tokens] duration
+        //   @varName = [tokens] duration   (backward compatible)
         for (const line of lines) {
-            if (line.startsWith('@')) {
-                this.parsePattern(line);
+            const def = line.match(/^@?(\w+)\s*=\s*\[([^\]]+)\]\s+(.+)$/);
+            if (def) {
+                const [, varName, notesStr, durationStr] = def;
+                const notes = this.parseNotesString(notesStr);
+                const duration = this.parseDuration(durationStr);
+                if (duration === null || duration <= 0) {
+                    this.errors.push(`Invalid pattern duration: ${durationStr}`);
+                    continue;
+                }
+                this.patternVars.set(varName, { notes, duration });
             }
+        }
+
+        // Pass 2: parse usages and inline definitions
+        for (const line of lines) {
+            if (!line.startsWith('@')) continue;
+            // Skip lines that are variable definitions (handled above)
+            if (/^@?\w+\s*=/.test(line)) continue;
+            this.parsePattern(line);
         }
     }
 
@@ -501,29 +537,56 @@ export class GraphParser {
      * Example: @lead [70] 1
      */
     parsePattern(line) {
-        const match = line.match(/^@(\w+)\s+\[([^\]]+)\]\s+(.+)$/);
-        if (!match) {
-            this.errors.push(`Invalid pattern syntax: ${line}`);
+        // 1) Inline form: @target [tokens] duration
+        let m = line.match(/^@(\w+)\s+\[([^\]]+)\]\s+(.+)$/);
+        if (m) {
+            const [, targetName, notesStr, durationStr] = m;
+            const notes = this.parseNotesString(notesStr);
+            const duration = this.parseDuration(durationStr);
+            if (duration === null || duration <= 0) {
+                this.errors.push(`Invalid pattern duration: ${durationStr}`);
+                return;
+            }
+            this.addPattern(targetName, notes, duration);
             return;
         }
 
-        const [, targetName, notesStr, durationStr] = match;
-        const notes = notesStr.split(/\s+/).map(tok => {
+        // 2) Variable usage: @target varName
+        m = line.match(/^@(\w+)\s+(\w+)$/);
+        if (m) {
+            const [, targetName, varName] = m;
+            if (!this.patternVars.has(varName)) {
+                this.errors.push(`Unknown pattern variable: ${varName}`);
+                return;
+            }
+            const def = this.patternVars.get(varName);
+            this.addPattern(targetName, def.notes, def.duration);
+            return;
+        }
+
+        // 3) If none matched, it's invalid
+        this.errors.push(`Invalid pattern syntax: ${line}`);
+    }
+
+    /**
+     * Common notes string parser used by inline and variable definitions
+     */
+    parseNotesString(notesStr) {
+        return notesStr.split(/\s+/).map(tok => {
             if (tok === '_') return null;         // rest
             if (tok === '-') return '-';          // continuation (tie)
             // Frequency literal with Hz suffix: keep as string so engine treats as Hz
             if (/^\d+(?:\.\d+)?\s*Hz$/i.test(tok)) return tok;
-            // Otherwise, numeric tokens are MIDI notes
+            // Otherwise, numeric tokens are MIDI notes or raw tokens passed through
             const num = Number(tok);
             return Number.isFinite(num) ? num : tok;
         });
+    }
 
-        const duration = this.parseDuration(durationStr);
-        if (duration === null || duration <= 0) {
-            this.errors.push(`Invalid pattern duration: ${durationStr}`);
-            return;
-        }
-
+    /**
+     * Add a parsed pattern instance for a given target, generating a unique id
+     */
+    addPattern(targetName, notes, duration) {
         // Resolve the target (could be a node or route)
         // For patterns, we always want the first node (source instrument)
         const resolvedTarget = this.resolveNodeOrRoute(targetName, 'target');
