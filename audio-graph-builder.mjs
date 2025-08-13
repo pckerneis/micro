@@ -482,7 +482,7 @@ export class AudioGraphBuilder {
     /**
      * Play a note on an instrument node
      */
-    playNote(instrumentNode, frequency, duration = 1.0, time = 0) {
+    playNote(instrumentNode, frequency, duration = 1.0, time = 0, velocity = 1.0) {
         if (!instrumentNode._instrumentType) {
             console.warn('Trying to play note on non-instrument node', instrumentNode);
             return;
@@ -496,7 +496,7 @@ export class AudioGraphBuilder {
 
         // Handle sample playback
         if (instrumentNode._instrumentType === 'sample') {
-            return this.playSample(instrumentNode, frequency, duration, startTime);
+            return this.playSample(instrumentNode, frequency, duration, startTime, velocity);
         }
 
         // Handle oscillator playback
@@ -520,9 +520,9 @@ export class AudioGraphBuilder {
         const t0 = startTime - eps;
         envelope.gain.cancelScheduledValues(t0);
         envelope.gain.setValueAtTime(0, t0);
-        envelope.gain.linearRampToValueAtTime(1, startTime + attack);
-        envelope.gain.linearRampToValueAtTime(sustain, startTime + attack + decay);
-        envelope.gain.setValueAtTime(sustain, Math.max(0, endTime - release));
+        envelope.gain.linearRampToValueAtTime(1 * velocity, startTime + attack);
+        envelope.gain.linearRampToValueAtTime(sustain * velocity, startTime + attack + decay);
+        envelope.gain.setValueAtTime(sustain * velocity, Math.max(0, endTime - release));
         envelope.gain.linearRampToValueAtTime(0, endTime);
 
         // Connect: oscillator -> envelope -> instrument node
@@ -557,7 +557,7 @@ export class AudioGraphBuilder {
     /**
      * Play a sample buffer
      */
-    playSample(sampleNode, frequency, duration, startTime) {
+    playSample(sampleNode, frequency, duration, startTime, velocity = 1.0) {
         if (!sampleNode._buffer) {
             if (!sampleNode._isLoading) {
                 console.warn(`Sample buffer not loaded: ${sampleNode._sampleUrl}`);
@@ -588,7 +588,7 @@ export class AudioGraphBuilder {
         const t0 = startTime - eps;
         envelope.gain.cancelScheduledValues(t0);
         envelope.gain.setValueAtTime(0, t0);
-        envelope.gain.linearRampToValueAtTime(1, startTime + fadeIn);
+        envelope.gain.linearRampToValueAtTime(1 * velocity, startTime + fadeIn);
 
         // Simple fade out if duration is shorter than sample
         const sampleDuration = sampleNode._buffer.duration / (bufferSource.playbackRate.value || 1);
@@ -596,7 +596,7 @@ export class AudioGraphBuilder {
         const fadeOutTime = Math.min(0.1, actualDuration * 0.1); // 10% fade out or 100ms max
 
         if (actualDuration > fadeOutTime) {
-            envelope.gain.setValueAtTime(1, startTime + actualDuration - fadeOutTime);
+            envelope.gain.setValueAtTime(1 * velocity, startTime + actualDuration - fadeOutTime);
             envelope.gain.linearRampToValueAtTime(0, startTime + actualDuration);
         }
 
