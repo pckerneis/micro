@@ -16,7 +16,7 @@
       { regex: /\b(?:true|false)\b/, token: 'atom' },
       { regex: /\bOUT\b/, token: 'atom' },
       // Operators and markers
-      { regex: /\+\+|->|=/, token: 'operator' },
+      { regex: /\+\+|->|=/, token: 'keyword' },
       { regex: /@(?=[A-Za-z_]\w*)/, token: 'keyword' },
       { regex: /\{/, token: 'bracket', push: 'params' },
       { regex: /\[/, token: 'bracket', push: 'seq' },
@@ -37,7 +37,7 @@
       { regex: /\}/, token: 'bracket', pop: true },
       { regex: /#.*/, token: 'comment' },
       { regex: /,/, token: 'bracket' },
-      { regex: /=/, token: 'operator' },
+      { regex: /=/, token: 'keyword' },
       { regex: /"(?:[^\\]|\\.)*?"|'(?:[^\\]|\\.)*?'/, token: 'string' },
       { regex: /\b(?:true|false)\b/, token: 'atom' },
       { regex: /[+\-]?\d+(?:\.\d+)?\s*dB\b/i, token: 'number' },
@@ -49,7 +49,7 @@
     seq: [
       { regex: /\]/, token: 'bracket', pop: true },
       { regex: /#.*/, token: 'comment' },
-      { regex: /\+\+|->|=/, token: 'operator' },
+      { regex: /\+\+|->|=/, token: 'keyword' },
       { regex: /\(/, token: 'bracket', push: 'chord' },
       { regex: /\)/, token: 'bracket' },
       { regex: /[+\-]?\d+(?:\.\d+)?\s*dB\b/i, token: 'number' },
