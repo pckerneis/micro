@@ -12,6 +12,7 @@ export class AudioGraphBuilder {
         this.activeNodeCallback = null; // Callback to register active audio nodes
         this.nodeMap = new Map();
         this.sampleLoadPromises = [];
+        this.sampleRegistry = new Map(); // name -> AudioBuffer (provided by app)
     }
 
     /**
@@ -19,6 +20,30 @@ export class AudioGraphBuilder {
      */
     setActiveNodeCallback(callback) {
         this.activeNodeCallback = callback;
+    }
+
+    /**
+     * Provide a registry of decoded AudioBuffers keyed by name
+     */
+    setSampleRegistry(registry) {
+        if (registry && typeof registry.get === 'function') {
+            this.sampleRegistry = registry;
+        } else if (registry && typeof registry === 'object') {
+            // Allow plain object mapping
+            this.sampleRegistry = new Map(Object.entries(registry));
+        } else {
+            this.sampleRegistry = new Map();
+        }
+        // Update existing sample nodes to bind buffers by name when available
+        if (this.nodeMap && this.nodeMap.size > 0) {
+            for (const node of this.nodeMap.values()) {
+                if (node && node._instrumentType === 'sample' && node._sampleName && !node._buffer) {
+                    if (this.sampleRegistry.has(node._sampleName)) {
+                        node._buffer = this.sampleRegistry.get(node._sampleName);
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -249,15 +274,21 @@ export class AudioGraphBuilder {
         sampleGain.gain.value = this.resolveGainValue(parameters.gain ?? 1.0, 1.0);
         sampleGain._instrumentType = 'sample';
         sampleGain._sampleUrl = parameters.url;
+        sampleGain._sampleName = parameters.name;
         sampleGain._buffer = null;
         sampleGain._isLoading = false;
         sampleGain._rawParams = { ...parameters };
         sampleGain._paramModulations = {};
         
-        // Load the audio buffer if URL is provided
-        if (parameters.url) {
+        // 1) Prefer in-memory buffer by name if provided
+        if (parameters.name && this.sampleRegistry && this.sampleRegistry.has(parameters.name)) {
+            sampleGain._buffer = this.sampleRegistry.get(parameters.name);
+        } else if (parameters.url) {
+            // 2) Fallback to loading from URL
             const p = this.loadSampleBuffer(sampleGain, parameters.url);
             this.sampleLoadPromises.push(p);
+        } else if (parameters.name) {
+            console.warn(`Sample named "${parameters.name}" not found in registry and no URL provided.`);
         }
         
         return sampleGain;

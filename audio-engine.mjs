@@ -24,8 +24,7 @@ export class AudioEngine {
         this.lookaheadSec = 0.15; // schedule 150ms ahead
         this.intervalMs = 25; // scheduler wakeup period
         this.schedulerInterval = null;
-        this.nextStepTime = 0; // deprecated (kept for compatibility)
-        this.currentStep = 0;  // deprecated (kept for compatibility)
+        this.sampleRegistry = new Map(); // name -> AudioBuffer
     }
 
     /**
@@ -40,7 +39,7 @@ export class AudioEngine {
             this.masterGain.connect(this.audioContext.destination);
             this.masterGain.gain.value = 0.7; // Default volume
             
-            console.log('Audio Engine V2 initialized successfully');
+            console.log('Audio Engine initialized successfully');
             return true;
         } catch (error) {
             console.error('Failed to initialize audio engine:', error);
@@ -55,6 +54,10 @@ export class AudioEngine {
         try {
             // Create new graph builder with master gain as output
             this.graphBuilder = new AudioGraphBuilder(this.audioContext, this.masterGain);
+            // Provide current sample registry so sample{name='foo'} can resolve
+            if (this.graphBuilder.setSampleRegistry) {
+                this.graphBuilder.setSampleRegistry(this.sampleRegistry);
+            }
             
             // Set up active node tracking callback
             this.graphBuilder.setActiveNodeCallback((audioNode) => {
@@ -79,6 +82,22 @@ export class AudioEngine {
         } catch (error) {
             console.error('Failed to load graph:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Set or update the in-memory sample registry used by sample{name="..."}
+     */
+    setSampleRegistry(registry) {
+        if (registry && typeof registry.get === 'function') {
+            this.sampleRegistry = registry;
+        } else if (registry && typeof registry === 'object') {
+            this.sampleRegistry = new Map(Object.entries(registry));
+        } else {
+            this.sampleRegistry = new Map();
+        }
+        if (this.graphBuilder && this.graphBuilder.setSampleRegistry) {
+            this.graphBuilder.setSampleRegistry(this.sampleRegistry);
         }
     }
 

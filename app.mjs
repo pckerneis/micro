@@ -7,6 +7,7 @@ class MicroApp {
         this.parser = new GraphParser();
         this.editor = null;
         this.isInitialized = false;
+        this.sampleRegistry = new Map(); // name -> AudioBuffer
     }
 
     async init() {
@@ -17,6 +18,9 @@ class MicroApp {
                 this.log('Failed to initialize audio engine', 'error');
                 return;
             }
+
+            // Provide an initial (empty) sample registry to the engine/builder
+            this.audioEngine.setSampleRegistry(this.sampleRegistry);
 
             // Initialize CodeMirror editor
             this.initEditor();
@@ -114,6 +118,9 @@ class MicroApp {
                 this.togglePlayback();
             }
         });
+
+        // Samples UI (drag & drop, file picker)
+        this.setupSamplesUI();
     }
 
     async executeCode() {
@@ -256,6 +263,180 @@ class MicroApp {
         document.getElementById('status').textContent = status;
     }
 
+    /**
+     * Setup drag-and-drop and file picker for loading audio samples
+     */
+    setupSamplesUI() {
+        const dropzone = document.getElementById('dropzone');
+        const samplesList = document.getElementById('samplesList');
+        const pickBtn = document.getElementById('pickFilesBtn');
+        const filePicker = document.getElementById('filePicker');
+
+        if (!dropzone || !samplesList) return; // defensive
+
+        // Highlight on dragover/dragenter
+        const prevent = (e) => { e.preventDefault(); e.stopPropagation(); };
+        ['dragenter','dragover','dragleave','drop'].forEach(evt => {
+            dropzone.addEventListener(evt, prevent);
+        });
+        dropzone.addEventListener('dragover', () => dropzone.classList.add('dragover'));
+        dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+        dropzone.addEventListener('drop', async (e) => {
+            dropzone.classList.remove('dragover');
+            const dt = e.dataTransfer;
+            const files = Array.from(dt.files || []).filter(f => f.type.startsWith('audio/'));
+            if (files.length === 0) {
+                this.log('No audio files dropped', 'warning');
+                return;
+            }
+            await this.addSamplesFromFiles(files);
+        });
+
+        if (pickBtn && filePicker) {
+            pickBtn.addEventListener('click', () => filePicker.click());
+            filePicker.addEventListener('change', async (e) => {
+                const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('audio/'));
+                if (files.length > 0) {
+                    await this.addSamplesFromFiles(files);
+                    filePicker.value = '';
+                }
+            });
+        }
+    }
+
+    /**
+     * Decode and register multiple audio files
+     */
+    async addSamplesFromFiles(files) {
+        for (const file of files) {
+            try {
+                const buffer = await this.decodeFileToAudioBuffer(file);
+                const name = this.generateUniqueSampleName(this.suggestNameFromFile(file.name));
+                this.sampleRegistry.set(name, buffer);
+                // Inform engine/builder of registry update
+                this.audioEngine.setSampleRegistry(this.sampleRegistry);
+                // Render UI block
+                this.addSampleBlock(name, buffer);
+                this.log(`Loaded sample "${name}" (${file.type}, ${(buffer.duration).toFixed(2)}s)`, 'success');
+            } catch (err) {
+                this.log(`Failed to load sample ${file.name}: ${err.message}`, 'error');
+            }
+        }
+    }
+
+    /**
+     * Decode a File into an AudioBuffer using the engine's AudioContext
+     */
+    async decodeFileToAudioBuffer(file) {
+        const arrayBuffer = await file.arrayBuffer();
+        return await this.audioEngine.audioContext.decodeAudioData(arrayBuffer);
+    }
+
+    /**
+     * Create and append a sample block with waveform and name
+     */
+    addSampleBlock(name, audioBuffer) {
+        const container = document.getElementById('samplesList');
+        if (!container) return;
+
+        const item = document.createElement('div');
+        item.className = 'sample-item';
+        item.title = `Click to copy name: ${name}`;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 300;
+        canvas.height = 40;
+        canvas.className = 'sample-waveform';
+        this.drawWaveform(canvas, audioBuffer);
+
+        const meta = document.createElement('div');
+        meta.className = 'sample-meta';
+        const nameEl = document.createElement('span');
+        nameEl.className = 'sample-name';
+        nameEl.textContent = name;
+        const lenEl = document.createElement('span');
+        lenEl.className = 'sample-len';
+        lenEl.textContent = `${audioBuffer.duration.toFixed(2)}s`;
+        meta.appendChild(nameEl);
+        meta.appendChild(lenEl);
+
+        item.appendChild(canvas);
+        item.appendChild(meta);
+
+        // Copy snippet to clipboard on click
+        item.addEventListener('click', async () => {
+            try {
+                const snippet = `sample{name='${name}'}`;
+                await navigator.clipboard.writeText(snippet);
+                item.classList.add('copied');
+                const prev = item.dataset.tooltip;
+                item.dataset.tooltip = 'Copied sample{name=...}!';
+                setTimeout(() => {
+                    item.classList.remove('copied');
+                    if (prev !== undefined) item.dataset.tooltip = prev; else delete item.dataset.tooltip;
+                }, 800);
+            } catch (e) {
+                this.log('Clipboard not available', 'warning');
+            }
+        });
+
+        container.appendChild(item);
+    }
+
+    /**
+     * Draw a simple min/max waveform to a canvas
+     */
+    drawWaveform(canvas, buffer) {
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = '#2d2d30';
+        ctx.fillRect(0, 0, width, height);
+        ctx.strokeStyle = '#9cdcfe';
+        ctx.lineWidth = 1;
+
+        const data = buffer.getChannelData(0);
+        const samplesPerBucket = Math.max(1, Math.floor(data.length / width));
+        ctx.beginPath();
+        for (let x = 0; x < width; x++) {
+            const start = x * samplesPerBucket;
+            const end = Math.min(data.length, start + samplesPerBucket);
+            let min = 1.0, max = -1.0;
+            for (let i = start; i < end; i++) {
+                const v = data[i];
+                if (v < min) min = v;
+                if (v > max) max = v;
+            }
+            const y1 = Math.round((1 - (max + 1) / 2) * height);
+            const y2 = Math.round((1 - (min + 1) / 2) * height);
+            ctx.moveTo(x, y1);
+            ctx.lineTo(x, y2);
+        }
+        ctx.stroke();
+    }
+
+    suggestNameFromFile(filename) {
+        const base = filename.replace(/\.[^/.]+$/, '');
+        return this.slugify(base);
+    }
+
+    generateUniqueSampleName(base) {
+        let name = base;
+        let i = 1;
+        while (this.sampleRegistry.has(name)) {
+            name = `${base}-${i++}`;
+        }
+        return name;
+    }
+
+    slugify(s) {
+        return String(s)
+            .toLowerCase()
+            .replace(/[^a-z0-9-_]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 64) || 'sample';
+    }
     showGraph() {
         if (!this.lastParsedGraph) {
             this.log('No graph to display. Execute some code first!', 'warning');

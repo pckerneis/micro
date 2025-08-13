@@ -166,6 +166,58 @@ main {
     flex-direction: column;
 }
 
+/* Samples Panel */
+.samples-panel {
+    border-bottom: 1px solid #3e3e42;
+    padding: 0.5rem 1rem;
+}
+.samples-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+.samples-header h3 {
+    color: #c586c0;
+    font-size: 1rem;
+}
+.dropzone {
+    border: 2px dashed #3e3e42;
+    border-radius: 6px;
+    padding: 0.75rem;
+    text-align: center;
+    color: #858585;
+    background: #1f1f1f;
+}
+.dropzone.dragover {
+    border-color: #569cd6;
+    color: #9cdcfe;
+}
+.samples-list {
+    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 300px;
+    overflow: auto;
+}
+.sample-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    background: #2a2a2a;
+    border: 1px solid #3e3e42;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.sample-item:hover { border-color: #569cd6; }
+.sample-waveform { flex: 0 0 auto; border-radius: 2px; background: #1e1e1e; }
+.sample-meta { display: flex; gap: 10px; align-items: center; }
+.sample-name { color: #dcdcaa; }
+.sample-len { color: #858585; font-size: 0.85rem; }
+
 .console {
     flex: 1;
     padding: 1rem;

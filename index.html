@@ -62,6 +62,19 @@ bass = square{} -> lowpass{frequency=200} -> gain{level=-8dB} -> OUT
             </div>
             
             <div class="output-container">
+                <div class="samples-panel" id="samplesPanel">
+                    <div class="samples-header">
+                        <h3>Samples</h3>
+                        <div class="samples-actions">
+                            <button id="pickFilesBtn" class="btn">Add files…</button>
+                            <input type="file" id="filePicker" accept="audio/*" multiple style="display:none" />
+                        </div>
+                    </div>
+                    <div id="dropzone" class="dropzone">
+                        <span>Drag & drop audio files here</span>
+                    </div>
+                    <div id="samplesList" class="samples-list"></div>
+                </div>
                 <div class="console" id="console">
                     <div class="console-line">Micro v1.0 - Ready to code music!</div>
                 </div>
