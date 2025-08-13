@@ -409,11 +409,12 @@ class MicroApp {
             }
         }
         
-        // Add patterns as annotations
+        // Add patterns as annotations (patterns are keyed by unique IDs; use targetName for display)
         if (patterns.size > 0) {
             mermaidCode += '\n    %% Patterns\n';
-            for (const [instrumentName, pattern] of patterns) {
-                const readableName = nodeNames.get(instrumentName) || instrumentName;
+            for (const [, pattern] of patterns) {
+                const target = pattern.targetName || pattern.resolvedName || 'unknown';
+                const readableName = nodeNames.get(target) || target;
                 mermaidCode += `    %% @${readableName} [${pattern.notes.join(' ')}] ${pattern.duration}\n`;
             }
         }

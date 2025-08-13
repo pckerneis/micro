@@ -528,9 +528,12 @@ export class GraphParser {
         // For patterns, we always want the first node (source instrument)
         const resolvedTarget = this.resolveNodeOrRoute(targetName, 'target');
 
-        this.patterns.set(resolvedTarget, {
-            name: targetName,  // Keep original name for reference
-            resolvedName: resolvedTarget,  // Actual node name to target
+        // Store by a unique pattern name to allow multiple patterns per target
+        const uniqueName = this.generatePatternName(targetName);
+        this.patterns.set(uniqueName, {
+            name: uniqueName,              // unique pattern identifier
+            targetName: targetName,        // original target as written by user
+            resolvedName: resolvedTarget,  // actual node/route first node
             notes: notes,
             duration: duration
         });
@@ -605,6 +608,19 @@ export class GraphParser {
             index: m[2] != null ? parseInt(m[2], 10) : null,
             param: m[3] || null
         };
+    }
+
+    /**
+     * Generate a unique pattern name
+     */
+    generatePatternName(target) {
+        let counter = 0;
+
+        while (this.patterns.has(`${target}-${counter}`)) {
+            counter++;
+        }
+
+        return `${target}-${counter}`;
     }
 
     /**
