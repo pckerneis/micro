@@ -49,7 +49,7 @@ class MicroApp {
         }
         
         this.editor = CodeMirror.fromTextArea(textarea, {
-            mode: 'javascript',
+            mode: 'micro',
             theme: 'monokai',
             lineNumbers: true,
             autoCloseBrackets: true,
@@ -60,6 +60,8 @@ class MicroApp {
             extraKeys: {
                 'Ctrl-Enter': () => this.executeCode(),
                 'Cmd-Enter': () => this.executeCode(),
+                'Ctrl-/': 'toggleComment',
+                'Cmd-/': 'toggleComment',
                 'Ctrl-S': (cm) => {
                     this.saveCode();
                     return false; // Prevent browser save dialog
