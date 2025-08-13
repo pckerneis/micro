@@ -594,7 +594,28 @@ export class GraphParser {
             if (inParen) {
                 if (ch === ')') {
                     inParen = false;
-                    flushChord();
+                    // Build chord array from chordBuf
+                    const content = chordBuf.trim();
+                    chordBuf = '';
+                    let chord;
+                    if (!content) {
+                        chord = [];
+                    } else {
+                        const parts = content.split(/\s+/).filter(Boolean);
+                        chord = parts.map(p => this.parseSingleNoteToken(p));
+                    }
+                    // Parse optional trailing modifiers like @0.8?0.5 (allow whitespace)
+                    let j = i + 1;
+                    const rest = notesStr.slice(j);
+                    const m = rest.match(/^\s*(?:@(\d+(?:\.\d+)?))?\s*(?:\?(\d+(?:\.\d+)?))?/);
+                    if (m && (m[1] != null || m[2] != null)) {
+                        const vel = m[1] != null ? Math.max(0, Math.min(1, parseFloat(m[1]))) : 1.0;
+                        const prob = m[2] != null ? Math.max(0, Math.min(1, parseFloat(m[2]))) : 1.0;
+                        out.push({ chord, vel, prob });
+                        i = j + m[0].length - 1; // advance past modifiers
+                    } else {
+                        out.push(chord);
+                    }
                 } else {
                     chordBuf += ch;
                 }

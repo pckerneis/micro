@@ -262,30 +262,40 @@ export class AudioEngine {
                         timeSec = Math.max(timeSec, now + 0.005);
                         const durSec = Math.max(0.01, sustainSteps * pattern.stepTicks * this.tickSec);
 
-                        if (Array.isArray(tok)) {
-                            // Chord: schedule each element simultaneously
-                            for (const subTok of tok) {
-                                if (subTok == null || subTok === '-' || subTok === '_') continue;
-                                let baseNote = subTok;
-                                let vel = 1.0;
-                                let prob = 1.0;
-                                if (typeof subTok === 'string') {
-                                    const m = subTok.match(/^(.+?)(?:@(\d+(?:\.\d+)?))?(?:\?(\d+(?:\.\d+)?))?$/);
-                                    if (m) {
-                                        const baseRaw = m[1].trim();
-                                        vel = m[2] != null ? Math.max(0, Math.min(1, parseFloat(m[2]))) : 1.0;
-                                        prob = m[3] != null ? Math.max(0, Math.min(1, parseFloat(m[3]))) : 1.0;
-                                        if (/^\d+(?:\.\d+)?\s*Hz$/i.test(baseRaw)) {
-                                            baseNote = baseRaw;
-                                        } else if (/^\d+(?:\.\d+)?$/.test(baseRaw)) {
-                                            baseNote = Number(baseRaw);
-                                        } else {
-                                            baseNote = baseRaw;
+                        if (Array.isArray(tok) || (tok && typeof tok === 'object' && Array.isArray(tok.chord))) {
+                            // Chord: can be raw array or object { chord: [...], vel, prob }
+                            const chordNotes = Array.isArray(tok) ? tok : tok.chord;
+                            const chordVel = (tok && typeof tok === 'object' && tok.vel != null)
+                                ? Math.max(0, Math.min(1, parseFloat(tok.vel))) : 1.0;
+                            const chordProb = (tok && typeof tok === 'object' && tok.prob != null)
+                                ? Math.max(0, Math.min(1, parseFloat(tok.prob))) : 1.0;
+
+                            // Probability gate for whole chord
+                            if (Math.random() <= chordProb) {
+                                for (const subTok of chordNotes) {
+                                    if (subTok == null || subTok === '-' || subTok === '_') continue;
+                                    let baseNote = subTok;
+                                    let vel = 1.0;
+                                    let prob = 1.0;
+                                    if (typeof subTok === 'string') {
+                                        const m = subTok.match(/^(.+?)(?:@(\d+(?:\.\d+)?))?(?:\?(\d+(?:\.\d+)?))?$/);
+                                        if (m) {
+                                            const baseRaw = m[1].trim();
+                                            vel = m[2] != null ? Math.max(0, Math.min(1, parseFloat(m[2]))) : 1.0;
+                                            prob = m[3] != null ? Math.max(0, Math.min(1, parseFloat(m[3]))) : 1.0;
+                                            if (/^\d+(?:\.\d+)?\s*Hz$/i.test(baseRaw)) {
+                                                baseNote = baseRaw;
+                                            } else if (/^\d+(?:\.\d+)?$/.test(baseRaw)) {
+                                                baseNote = Number(baseRaw);
+                                            } else {
+                                                baseNote = baseRaw;
+                                            }
                                         }
                                     }
+                                    if (Math.random() > prob) continue; // per-note probability
+                                    const finalVel = Math.max(0, Math.min(1, vel * chordVel));
+                                    this.playNote(pattern.targetName, baseNote, durSec, timeSec, finalVel);
                                 }
-                                if (Math.random() > prob) continue; // per-note probability
-                                this.playNote(pattern.targetName, baseNote, durSec, timeSec, vel);
                             }
                             pattern.nextTick += pattern.stepTicks;
                         } else {
