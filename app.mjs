@@ -264,6 +264,40 @@ class MicroApp {
     }
 
     /**
+     * Show a temporary toast message on screen
+     */
+    showToast(message, durationMs = 2000) {
+        let container = document.getElementById('toastContainer');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'toastContainer';
+            container.className = 'toast-container';
+            document.body.appendChild(container);
+        }
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.textContent = message;
+        container.appendChild(toast);
+        // Trigger CSS transition reliably
+        // Force reflow then add class so opacity transitions from 0 -> 1
+        // This avoids cases where rAF might run before styles are applied
+        void toast.offsetWidth; // reflow
+        toast.classList.add('show');
+        // Fallback: if still computed as transparent after a tick, set inline styles
+        setTimeout(() => {
+            const cs = window.getComputedStyle(toast);
+            if (parseFloat(cs.opacity) === 0) {
+                toast.style.opacity = '1';
+                toast.style.transform = 'translateY(0)';
+            }
+        }, 0);
+        setTimeout(() => {
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 300);
+        }, durationMs);
+    }
+
+    /**
      * Setup drag-and-drop and file picker for loading audio samples
      */
     setupSamplesUI() {
@@ -375,6 +409,7 @@ class MicroApp {
                     item.classList.remove('copied');
                     if (prev !== undefined) item.dataset.tooltip = prev; else delete item.dataset.tooltip;
                 }, 800);
+                this.showToast(`Copied ${snippet} to clipboard`, 2000);
             } catch (e) {
                 this.log('Clipboard not available', 'warning');
             }

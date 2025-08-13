@@ -224,6 +224,7 @@ main {
     overflow-y: auto;
     font-size: 0.9rem;
     line-height: 1.4;
+    color: #d4d4d4;
 }
 
 .console-line {
@@ -240,6 +241,34 @@ main {
 
 .console-line.info {
     color: #9cdcfe;
+}
+
+/* Toast notifications */
+.toast-container {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 10000;
+    pointer-events: none;
+}
+.toast {
+    background: #2a2a2a;
+    color: #e5e5e5;
+    border: 1px solid #3e3e42;
+    border-radius: 6px;
+    padding: 8px 12px;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+    transform: translateY(8px);
+    opacity: 0;
+    transition: opacity 180ms ease, transform 180ms ease;
+    pointer-events: auto;
+}
+.toast.show {
+    opacity: 1;
+    transform: translateY(0);
 }
 
 /* Scrollbar styling */
