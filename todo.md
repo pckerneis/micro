@@ -3,5 +3,5 @@
 - [ ] Phase-locking and phase parameter
 - [ ] Multiple patterns for same target
 - [ ] Find name
-- [ ] Add "run" button
+- [x] Add "run" button
 - [ ] Better reverb

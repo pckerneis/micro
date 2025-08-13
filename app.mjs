@@ -84,11 +84,13 @@ class MicroApp {
 
     setupEventListeners() {
         const playBtn = document.getElementById('playBtn');
+        const runBtn = document.getElementById('runBtn');
         const graphBtn = document.getElementById('graphBtn');
         const masterGainSlider = document.getElementById('masterGain');
         const volumeValue = document.getElementById('volumeValue');
 
         playBtn.addEventListener('click', () => this.togglePlayback());
+        runBtn.addEventListener('click', () => this.executeCode());
         graphBtn.addEventListener('click', () => this.showGraph());
         
         // Start time display update interval
