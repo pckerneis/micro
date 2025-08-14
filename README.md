@@ -173,23 +173,22 @@ chain -> reverb{mix=0.4, length=3} -> OUT
 # - https://freesound.org/people/DigitalUnderglow/sounds/695697/
 
 amp = gain{level=0.3}
-lfo = sine{frequency=8, level=0.3}
+lfo = sine{frequency=8, level=0.2}
 lfo -> amp.gain
-autofilter = lowpass{q=10, frequency=1200}
-saw = sawtooth{decay=0.2, sustain=0.5} -> delay {}
-saw -> amp -> gain{level=-12dB} -> autofilter -> OUT
-sine{frequency=0.2, level=600} -> autofilter[0].frequency
+autofilter = lowpass{q=18, frequency=800}
+saw = sawtooth{sustain=0, decay=0.25} -> delay {mix=0.3, length=0.25, feedback=0.75}
+saw -> amp -> autofilter -> reverb{mix=0.6} -> gain{level=-8dB}  -> OUT
+sine{frequency=0.04, level=390} -> autofilter[0].frequency
 
 bass = sine{} -> gain{level=-12dB} -> reverb{} -> OUT
-sine{frequency=3600, level=500} -> bass.frequency
 
 kick = sample{url='https://cdn.freesound.org/previews/652/652006_11532701-lq.mp3'} -> delay{} -> reverb{} -> OUT
-clap = sample{url='https://cdn.freesound.org/previews/695/695697_14904072-lq.mp3'} -> reverb{size=1.5, mix=0.8} -> OUT
+clap = sample{url='https://cdn.freesound.org/previews/695/695697_14904072-lq.mp3'} -> reverb{size=2.5, mix=0.65} -> gain{level=-6dB} -> OUT
 seagulls = sample{url='https://cdn.freesound.org/previews/787/787348_5629280-lq.mp3'} -> delay{feedback=0.9} -> reverb{mix=0.8} -> gain{level=3dB} -> OUT
 
 @saw [52 55 59 62] 1/2
 @bass [40 36]16
-@kick [60]4
+@kick [64]4
 @clap [_ _ _ 56?0.5]2
 @seagulls [52?0.6 54?0.6 54?0.6]8
 ```
