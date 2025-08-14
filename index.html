@@ -32,33 +32,30 @@
         
         <main>
             <div class="editor-container">
-                <textarea id="editor"># Welcome to Micro!
-# This is a minimalistic livecoding environment for music
+                <textarea id="editor"># Samples used:
+# - https://freesound.org/people/smedloidian/sounds/787348/
+# - https://freesound.org/people/GioMilko/sounds/347089/
+# - https://freesound.org/people/DigitalUnderglow/sounds/695697/
 
-# ——— Basics ———
-kick = sample{gain=1, url='https://cdn.freesound.org/previews/584/584792_11532701-lq.mp3'} -> OUT
-snare = sample{gain=1, url='https://cdn.freesound.org/previews/13/13751_32468-lq.mp3'} -> OUT
-delay = delay{time=0.75} -> OUT
+amp = gain{level=0.3}
+lfo = sine{frequency=8, level=0.2}
+lfo -> amp.gain
+autofilter = lowpass{q=18, frequency=800}
+saw = sawtooth{sustain=0, decay=1} -> delay {mix=0.3, length=0.25, feedback=0.75}
+saw -> amp -> autofilter -> reverb{mix=0.6} -> gain{level=-8dB}  -> OUT
+sine{frequency=0.04, level=390} -> autofilter[0].frequency
 
-# Lead instrument
-lead = sine{decay=0.1, sustain=0}
+bass = sine{} -> gain{level=-12dB} -> reverb{} -> OUT
 
-# FM/LFO example: connect a modulator to an AudioParam
-# The following uses the new param routing syntax: target.param
-fm = sine{frequency=5, level=120}   # continuous LFO/FM source
-fm -> lead.frequency                # modulate lead oscillator frequency
+kick = sample{url='https://cdn.freesound.org/previews/652/652006_11532701-lq.mp3'} -> delay{} -> reverb{} -> OUT
+clap = sample{url='https://cdn.freesound.org/previews/695/695697_14904072-lq.mp3'} -> reverb{size=2.5, mix=0.65} -> gain{level=-6dB} -> OUT
+seagulls = sample{url='https://cdn.freesound.org/previews/787/787348_5629280-lq.mp3'} -> delay{feedback=0.9} -> reverb{mix=0.8} -> gain{level=3dB} -> OUT
 
-# Route lead to output
-lead -> gain{level=-6dB} -> OUT
-
-# Bass with filter
-bass = square{} -> lowpass{frequency=200} -> gain{level=-8dB} -> OUT
-
-# Create patterns
-@kick [60] 1
-@snare [_ 60] 1
-@bass [_ 34] 1/2
-@lead [70 77 74 76 72 81 72] 1/2
+@saw [52 55 59 62] 1/2
+@bass [40 36]16
+@kick [64]4
+@clap [_ _ _ 56?0.5]2
+@seagulls [52?0.6 54?0.6 54?0.6]8
 </textarea>
             </div>
             
