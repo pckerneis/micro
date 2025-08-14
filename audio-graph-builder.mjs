@@ -630,16 +630,17 @@ export class AudioGraphBuilder {
         const decay = Math.max(0, params.decay ?? 0.3);
         const sustain = params.sustain ?? 0.7;
         const release = Math.max(0, params.release ?? 0.5);
-        const minGain = 0.01;
+        const minGain = 0.0001;
         const t0 = startTime - eps;
         envelope.gain.cancelScheduledValues(t0);
         envelope.gain.setValueAtTime(0, t0);
         envelope.gain.exponentialRampToValueAtTime(Math.max(minGain, velocity), startTime + attack);
         envelope.gain.exponentialRampToValueAtTime(Math.max(minGain, sustain * velocity), startTime + attack + decay);
         // Hold sustain until the end of the step, then start release
-        envelope.gain.setValueAtTime(sustain * velocity, endTime);
-        envelope.gain.exponentialRampToValueAtTime(minGain, endTime + release);
-        envelope.gain.setValueAtTime(0, endTime + release + eps);
+        const tEnd = Math.max(endTime, startTime + attack + decay + eps);
+        envelope.gain.setValueAtTime(sustain * velocity, tEnd);
+        envelope.gain.exponentialRampToValueAtTime(minGain, tEnd + release);
+        envelope.gain.setValueAtTime(0, tEnd + release + eps);
 
         // Connect: oscillator -> envelope -> instrument node
         oscillator.connect(envelope);
