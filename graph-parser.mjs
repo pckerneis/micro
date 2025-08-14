@@ -310,14 +310,26 @@ export class GraphParser {
             return;
         }
 
-        // Support indexing on the source (e.g., route[1]) but not source params
-        const sourceRef = this.parseReferenceExpression(parts[0]);
-        if (sourceRef && sourceRef.param) {
-            this.errors.push(`Connecting FROM a parameter is not supported: ${parts[0]}`);
+        // Source can be an inline node expression or a reference
+        const sourceExpr = parts[0];
+        let currentNodeName;
+        const sourceNode = this.parseNodeExpression(sourceExpr);
+        if (sourceNode) {
+            // Inline source node definition
+            const srcName = this.generateNodeName(sourceNode);
+            sourceNode.name = srcName;
+            this.nodes.set(srcName, sourceNode);
+            currentNodeName = srcName;
+        } else {
+            // Support indexing on the source (e.g., route[1]) but not source params
+            const sourceRef = this.parseReferenceExpression(sourceExpr);
+            if (sourceRef && sourceRef.param) {
+                this.errors.push(`Connecting FROM a parameter is not supported: ${parts[0]}`);
+            }
+            currentNodeName = sourceRef
+                ? this.resolveNodeOrRouteWithIndex(sourceRef.name, sourceRef.index, 'source')
+                : this.resolveNodeOrRoute(sourceExpr, 'source');
         }
-        let currentNodeName = sourceRef
-            ? this.resolveNodeOrRouteWithIndex(sourceRef.name, sourceRef.index, 'source')
-            : this.resolveNodeOrRoute(parts[0], 'source');
         
         for (let i = 1; i < parts.length; i++) {
             const targetExpression = parts[i];

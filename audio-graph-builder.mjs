@@ -197,9 +197,29 @@ export class AudioGraphBuilder {
     createDelayNode(parameters) {
         const delayTime = parameters.time ?? 0.3;
         const feedback = parameters.feedback ?? 0.3;
-        
+        const mix = Math.max(0, Math.min(1, parameters.mix ?? 0.3));
+
+        // Build composite: input -> [dry, convolver->wet] -> output
+        const input = this.audioContext.createGain();
+        const output = this.audioContext.createGain();
+        const dry = this.audioContext.createGain();
+        const wet = this.audioContext.createGain();
+
         const delayNode = this.audioContext.createDelay(Math.max(delayTime, 1.0));
         delayNode.delayTime.value = delayTime;
+
+        dry.gain.value = 1 - mix;
+        wet.gain.value = mix;
+
+        input.connect(dry);
+        input.connect(delayNode);
+        delayNode.connect(wet);
+        dry.connect(output);
+        wet.connect(output);
+
+        // Expose composite ends for graph connections
+        output._input = input;   // when connecting TO this effect, use _input
+        output._output = output; // when connecting FROM this effect, use node itself
         
         // Add feedback if specified
         if (feedback > 0) {
@@ -209,7 +229,7 @@ export class AudioGraphBuilder {
             feedbackGain.connect(delayNode);
         }
         
-        return delayNode;
+        return output;
     }
     
     /**
@@ -259,9 +279,8 @@ export class AudioGraphBuilder {
             for (let i = 0; i < length; i++) {
                 const t = i / sampleRate;
                 const env = Math.pow(1 - (t / Math.max(0.01, duration)), Math.max(0.001, decay) * 3);
-                const noise = (Math.random() * 2 - 1) * env;
                 // Add a hint of early reflections in first 100ms
-                let sample = noise;
+                let sample = (Math.random() * 2 - 1) * env;
                 if (i < sampleRate * 0.1) {
                     const early = Math.sin(i * 0.01) * env * 0.5;
                     sample += early;
@@ -295,7 +314,10 @@ export class AudioGraphBuilder {
                 filter.Q.value = parameters.q ?? 1.0;
                 break;
         }
-        
+        // For consistency with composite effects, expose _input/_output
+        // so routing code can treat all effects uniformly.
+        filter._input = filter;
+        filter._output = filter;
         return filter;
     }
 
@@ -403,6 +425,31 @@ export class AudioGraphBuilder {
     }
 
     /**
+     * Resolve an AudioParam on a target node by name.
+     * Handles common synonyms and checks both node and its _output/_input wrappers.
+     */
+    getAudioParam(targetNode, paramName) {
+        if (!targetNode) return null;
+        // Normalize common synonyms
+        let key = paramName;
+        if (key === 'cutoff') key = 'frequency';
+        if (key === 'resonance') key = 'Q';
+        if (key === 'q') key = 'Q';
+
+        const candidates = [
+            targetNode,
+            targetNode._output || null,
+            targetNode._input || null,
+        ];
+        for (const obj of candidates) {
+            if (!obj) continue;
+            const p = obj[key];
+            if (p && typeof p.setValueAtTime === 'function') return p;
+        }
+        return null;
+    }
+
+    /**
      * Create or reuse a continuous oscillator modulator from an instrument node definition
      * Used when an instrument node is used as a modulation source rather than a note-triggered instrument.
      */
@@ -412,8 +459,7 @@ export class AudioGraphBuilder {
         osc.type = sourceInstrumentNode._instrumentType || 'sine';
         // Frequency from raw params or a reasonable LFO default
         const rp = sourceInstrumentNode._rawParams || {};
-        const freq = (typeof rp.frequency === 'number') ? rp.frequency : 2.0;
-        osc.frequency.value = freq;
+        osc.frequency.value = (typeof rp.frequency === 'number') ? rp.frequency : 2.0;
         // Optional depth/level scaling
         const levelParam = rp.level ?? rp.gain ?? rp.amount;
         const gain = this.audioContext.createGain();
@@ -447,8 +493,8 @@ export class AudioGraphBuilder {
         }
 
         // Non-instrument target: connect directly to the AudioParam if present
-        const targetParam = targetNode && targetNode[paramName];
-        if (targetParam && typeof targetParam.setValueAtTime === 'function') {
+        const targetParam = this.getAudioParam(targetNode, paramName);
+        if (targetParam) {
             let sourceOut = sourceNode;
             if (sourceNode._instrumentType) {
                 sourceOut = this.getOrCreateContinuousModulator(sourceNode);
@@ -658,14 +704,14 @@ export class AudioGraphBuilder {
         const t0 = startTime - eps;
         envelope.gain.cancelScheduledValues(t0);
         envelope.gain.setValueAtTime(0, t0);
-        envelope.gain.linearRampToValueAtTime(1 * velocity, startTime + fadeIn);
+        envelope.gain.linearRampToValueAtTime(velocity, startTime + fadeIn);
 
         // Hold until step end, then apply release
         const sampleDuration = sampleNode._buffer.duration / (bufferSource.playbackRate.value || 1);
         const actualDuration = Math.max(0.01, Math.min(duration, sampleDuration));
         const params = sampleNode._instrumentParams || {};
         const release = Math.max(0, params.release ?? 0.1);
-        envelope.gain.setValueAtTime(1 * velocity, startTime + actualDuration);
+        envelope.gain.setValueAtTime(velocity, startTime + actualDuration);
         envelope.gain.linearRampToValueAtTime(0, startTime + actualDuration + release);
 
         // Connect: buffer source -> envelope -> sample node
