@@ -167,7 +167,7 @@ chain -> reverb{mix=0.4, length=3} -> OUT
 ### 5) Full example
 
 ```
-# Sample used:
+# Samples used:
 # - https://freesound.org/people/smedloidian/sounds/787348/
 # - https://freesound.org/people/GioMilko/sounds/347089/
 # - https://freesound.org/people/DigitalUnderglow/sounds/695697/
@@ -176,7 +176,7 @@ amp = gain{level=0.3}
 lfo = sine{frequency=8, level=0.2}
 lfo -> amp.gain
 autofilter = lowpass{q=18, frequency=800}
-saw = sawtooth{sustain=0, decay=0.25} -> delay {mix=0.3, length=0.25, feedback=0.75}
+saw = sawtooth{sustain=0, decay=1} -> delay {mix=0.3, length=0.25, feedback=0.75}
 saw -> amp -> autofilter -> reverb{mix=0.6} -> gain{level=-8dB}  -> OUT
 sine{frequency=0.04, level=390} -> autofilter[0].frequency
 
