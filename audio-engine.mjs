@@ -16,8 +16,6 @@ export class AudioEngine {
         this.startTime = 0;
         this.pausedTime = 0;
         this.bpm = 120;
-        this.stepDuration = 60 / this.bpm; // Duration of one step in seconds
-        // Transport timing (integer tick scheduler)
         this.ppq = 96; // pulses per quarter note
         this.tickSec = 60 / this.bpm / this.ppq; // seconds per tick
         this.currentTick = 0; // transport tick position during scheduling
@@ -365,106 +363,12 @@ export class AudioEngine {
                         }
                         pattern.nextTick += Math.max(1, ev.durTicks || 1);
                         pattern.eventIndex = (pattern.eventIndex + 1) % pattern.events.length;
-                    } else {
-                        // Legacy uniform-step scheduling
-                        const notesLen = pattern.notes.length || 1;
-                        const stepIndex = Math.floor((pattern.nextTick / pattern.stepTicks) % notesLen);
-                        const tok = pattern.notes[stepIndex];
-                        // Rest or continuation: advance only
-                        if (tok === null || tok === '-' || tok === '_') {
-                            pattern.nextTick += pattern.stepTicks;
-                        } else {
-                            // Compute sustain across subsequent '-' tokens (ties)
-                            let sustainSteps = 1;
-                            for (let i = 1; i < notesLen; i++) {
-                                const nextTok = pattern.notes[(stepIndex + i) % notesLen];
-                                if (nextTok === '-') {
-                                    sustainSteps += 1;
-                                } else {
-                                    break;
-                                }
-                            }
-                            let timeSec = this.startTime + pattern.nextTick * this.tickSec;
-                            timeSec = Math.max(timeSec, now + 0.005);
-                            const durSec = Math.max(0.01, sustainSteps * pattern.stepTicks * this.tickSec);
-
-                            if (Array.isArray(tok) || (tok && typeof tok === 'object' && Array.isArray(tok.chord))) {
-                                // Chord: can be raw array or object { chord: [...], vel, prob }
-                                const chordNotes = Array.isArray(tok) ? tok : tok.chord;
-                                const chordVel = (tok && typeof tok === 'object' && tok.vel != null)
-                                    ? Math.max(0, Math.min(1, parseFloat(tok.vel))) : 1.0;
-                                const chordProb = (tok && typeof tok === 'object' && tok.prob != null)
-                                    ? Math.max(0, Math.min(1, parseFloat(tok.prob))) : 1.0;
-
-                                // Probability gate for whole chord
-                                if (Math.random() <= chordProb) {
-                                    for (const subTok of chordNotes) {
-                                        if (subTok == null || subTok === '-' || subTok === '_') continue;
-                                        let baseNote = subTok;
-                                        let vel = 1.0;
-                                        let prob = 1.0;
-                                        if (typeof subTok === 'string') {
-                                            const m = subTok.match(/^(.+?)(?:@(\d+(?:\.\d+)?))?(?:\?(\d+(?:\.\d+)?))?$/);
-                                            if (m) {
-                                                const baseRaw = m[1].trim();
-                                                vel = m[2] != null ? Math.max(0, Math.min(1, parseFloat(m[2]))) : 1.0;
-                                                prob = m[3] != null ? Math.max(0, Math.min(1, parseFloat(m[3]))) : 1.0;
-                                                if (/^\d+(?:\.\d+)?\s*Hz$/i.test(baseRaw)) {
-                                                    baseNote = baseRaw;
-                                                } else if (/^\d+(?:\.\d+)?$/.test(baseRaw)) {
-                                                    baseNote = Number(baseRaw);
-                                                } else {
-                                                    baseNote = baseRaw;
-                                                }
-                                            }
-                                        }
-                                        if (Math.random() > prob) continue; // per-note probability
-                                        const finalVel = Math.max(0, Math.min(1, vel * chordVel));
-                                        this.playNote(pattern.targetName, baseNote, durSec, timeSec, finalVel);
-                                    }
-                                }
-                                pattern.nextTick += pattern.stepTicks;
-                            } else {
-                                // Single note token
-                                // Parse inline velocity (@v) and probability (?p) modifiers
-                                // Examples: '60@0.8?0.5', '440Hz?0.25', '62@0.5'
-                                let baseNote = tok;
-                                let vel = 1.0;
-                                let prob = 1.0;
-                                if (typeof tok === 'string') {
-                                    const m = tok.match(/^(.+?)(?:@(\d+(?:\.\d+)?))?(?:\?(\d+(?:\.\d+)?))?$/);
-                                    if (m) {
-                                        const baseRaw = m[1].trim();
-                                        vel = m[2] != null ? Math.max(0, Math.min(1, parseFloat(m[2]))) : 1.0;
-                                        prob = m[3] != null ? Math.max(0, Math.min(1, parseFloat(m[3]))) : 1.0;
-                                        if (/^\d+(?:\.\d+)?\s*Hz$/i.test(baseRaw)) {
-                                            baseNote = baseRaw; // keep Hz literal as string
-                                        } else if (/^\d+(?:\.\d+)?$/.test(baseRaw)) {
-                                            baseNote = Number(baseRaw); // MIDI note number
-                                        } else {
-                                            baseNote = baseRaw; // unknown string, pass through
-                                        }
-                                    }
-                                }
-
-                                // Probability gate: skip triggering but still advance the step
-                                if (Math.random() > prob) {
-                                    pattern.nextTick += pattern.stepTicks;
-                                    continue;
-                                }
-
-                                this.playNote(pattern.targetName, baseNote, durSec, timeSec, vel);
-                                pattern.nextTick += pattern.stepTicks;
-                            }
-                        }
                     }
                 }
             }
             this.currentTick += 1;
         }
     }
-
-    // schedulePatternStep removed in favor of integer-tick scheduleLoop
 
     /**
      * Play a note on a specific route/instrument
@@ -499,14 +403,16 @@ export class AudioEngine {
             } else {
                 // Fallback: parse leading number if present
                 const n = parseFloat(note);
-                frequency = isFinite(n) ? n : 440;
+                frequency = isFinite(n) ? n : null;
             }
         } else {
-            frequency = 440;
+            frequency = null;
         }
 
-        // Play the note using the graph builder
-        return this.graphBuilder.playNote(sourceNode, frequency, duration, time, velocity);
+        if (frequency != null) {
+            // Play the note using the graph builder
+            return this.graphBuilder.playNote(sourceNode, frequency, duration, time, velocity);
+        }
     }
 
     /**

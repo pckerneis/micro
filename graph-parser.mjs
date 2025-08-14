@@ -588,19 +588,13 @@ export class GraphParser {
         let buf = '';
         let inParen = false;
         let chordBuf = '';
+
         const flushToken = (t) => {
             const tok = t.trim();
             if (!tok) return;
             out.push(this.parseSingleNoteToken(tok));
         };
-        const flushChord = () => {
-            const content = chordBuf.trim();
-            chordBuf = '';
-            if (!content) { out.push([]); return; }
-            const parts = content.split(/\s+/).filter(Boolean);
-            const chord = parts.map(p => this.parseSingleNoteToken(p));
-            out.push(chord);
-        };
+
         for (let i = 0; i < notesStr.length; i++) {
             const ch = notesStr[i];
             if (inParen) {
